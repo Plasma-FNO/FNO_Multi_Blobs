@@ -12,7 +12,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 configuration = {"Case": 'Multi-Blobs',
                  "Field": 'T',
                  "Type": '2D Time',
-                 "Epochs": 1,
+                 "Epochs": 500,
                  "Batch Size": 20,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
@@ -258,7 +258,7 @@ class LpLoss(object):
         return self.rel(x, y)
 
 # %%
-'''
+
 
 # #Adding Gaussian Noise to the training dataset
 # class AddGaussianNoise(object):
@@ -282,7 +282,7 @@ class LpLoss(object):
 
 # # additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
 # additive_noise.cuda()
-'''
+
 
 # %%
 ################################################################
@@ -361,7 +361,7 @@ class FNO2d(nn.Module):
         self.width = width
         self.padding = 8 # pad the domain if input is non-periodic
 
-        self.p = nn.Linear(12, self.width) # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
+        self.p = nn.Linear(T_in+2, self.width) # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
         self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
@@ -375,7 +375,7 @@ class FNO2d(nn.Module):
         self.w2 = nn.Conv2d(self.width, self.width, 1)
         self.w3 = nn.Conv2d(self.width, self.width, 1)
         self.norm = nn.InstanceNorm2d(self.width)
-        self.q = MLP(self.width, 1, self.width * 4) # output channel is 1: u(x, y)
+        self.q = MLP(self.width, step, self.width * 4) # output channel is 1: u(x, y)
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
@@ -412,13 +412,25 @@ class FNO2d(nn.Module):
         x = x.permute(0, 2, 3, 1)
         return x
 
+#Arbitrary grid discretisation 
+    # def get_grid(self, shape, device):
+    #     batchsize, size_x, size_y = shape[0], shape[1], shape[2]
+    #     gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
+    #     gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+    #     gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
+    #     gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+    #     return torch.cat((gridx, gridy), dim=-1).to(device)
+
+
+#Using x and y values from the simulation discretisation 
     def get_grid(self, shape, device):
         batchsize, size_x, size_y = shape[0], shape[1], shape[2]
-        gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
+        gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
         gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
-        gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
+        gridy = torch.tensor(y_grid, dtype=torch.float)
         gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1).to(device)
+
 
     def count_params(self):
         c = 0
@@ -441,22 +453,24 @@ field = configuration['Field']
 if field == 'Phi':
     u_sol = np.load(data)['Phi'].astype(np.float32)   / 1e3
 elif field == 'T':
-    u_sol = np.load(data)['T'].astype(np.float32)     / 1e6
+    u_sol = np.load(data)['T'].astype(np.float32)     / 1e5
 elif field == 'rho':
-    u_sol = np.load(data)['rho'].astype(np.float32)   / 1e20
+    u_sol = np.load(data)['rho'].astype(np.float32)   / 1e19
 
 if configuration['Log Normalisation'] == 'Yes':
     u_sol = np.log(u_sol)
 
 u_sol = np.nan_to_num(u_sol)
-x = np.load(data)['Rgrid'][0,:].astype(np.float32)
-y = np.load(data)['Zgrid'][:,0].astype(np.float32)
-t = np.load(data)['time'].astype(np.float32)
+x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
+y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
+t_grid = np.load(data)['time'].astype(np.float32)
 
 
 ntrain = 240
 ntest = 20
 S = 106 #Grid Size
+size_x = S
+size_y = S
 
 
 modes = configuration['Modes']
@@ -504,14 +518,6 @@ test_u_encoded = y_normalizer.encode(test_u)
 
 
 # %%
-# pad the location (x,y)
-gridx = torch.tensor(x, dtype=torch.float)
-gridx = gridx.reshape(1, S, 1, 1).repeat([1, 1, S, 1])
-gridy = torch.tensor(y, dtype=torch.float)
-gridy = gridy.reshape(1, 1, S, 1).repeat([1, S, 1, 1])
-
-train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1])), dim=-1)
-test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1])), dim=-1)
 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
@@ -540,8 +546,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['
 
 
 myloss = LpLoss(size_average=False)
-gridx = gridx.to(device)
-gridy = gridy.to(device)
+
 
 # %%
 
@@ -615,75 +620,7 @@ for ep in range(epochs):
     run.log_metrics({'Train Loss': train_loss, 
                     'Test Loss': test_loss})
 train_time = time.time() - start_time
-
-# %% 
-
-# for ep in tqdm(range(epochs)):
-#     model.train()
-#     t1 = default_timer()
-#     train_l2_step = 0
-#     train_l2_full = 0
-#     for xx, yy in train_loader:
-#         loss = 0
-#         xx = xx.to(device)
-#         yy = yy.to(device)
-#         # xx = additive_noise(xx)
-
-#         for t in range(0, T, step):
-#             y = yy[..., t:t + step]
-#             im = model(xx)
-#             loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-
-#             if t == 0:
-#                 pred = im
-#             else:
-#                 pred = torch.cat((pred, im), -1)
-
-#             xx = torch.cat((xx[..., step:-2], im,
-#                             gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
-
-#         train_l2_step += loss.item()
-#         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
-#         train_l2_full += l2_full.item()
-
-#         optimizer.zero_grad()
-#         loss.backward()
-#         # l2_full.backward()
-#         optimizer.step()
-
-#     test_l2_step = 0
-#     test_l2_full = 0
-#     with torch.no_grad():
-#         for xx, yy in test_loader:
-#             loss = 0
-#             xx = xx.to(device)
-#             yy = yy.to(device)
-
-#             for t in range(0, T, step):
-#                 y = yy[..., t:t + step]
-#                 im = model(xx)
-#                 loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-
-#                 if t == 0:
-#                     pred = im
-#                 else:
-#                     pred = torch.cat((pred, im), -1)
-
-#                 xx = torch.cat((xx[..., step:-2], im,
-#                                 gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
-
-#             # pred = y_normalizer.decode(pred)
-            
-#             test_l2_step += loss.item()
-#             test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
-
-#     t2 = default_timer()
-#     scheduler.step()
-    
-#     train_loss = train_l2_full / ntrain
-#     test_loss = test_l2_full / ntest
-
-    
+   
 # %%
 #Saving the Model
 model_loc = file_loc + '/Models/FNO_multi_blobs_' + run.name + '.pth'
@@ -694,25 +631,25 @@ torch.save(model.state_dict(),  model_loc)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
 pred_set = torch.zeros(test_u.shape)
 index = 0
-with torch.no_grad():
-    for xx, yy in tqdm(test_loader):
-        loss = 0
-        xx, yy = xx.to(device), yy.to(device)
-        # xx = additive_noise(xx)
-        t1 = default_timer()
-        for t in range(0, T, step):
-            y = yy[..., t:t + step]
-            out = model(xx)
-            
-            loss += myloss(out.reshape(1, -1), y.reshape(1, -1))
 
-            if t == 0:
-                pred = out
-            else:
-                pred = torch.cat((pred, out), -1)       
-                
-            xx = torch.cat((xx[..., step:-2], out,
-                                gridx.repeat([1, 1, 1, 1]), gridy.repeat([1, 1, 1, 1])), dim=-1)
+with torch.no_grad():
+        for xx, yy in test_loader:
+            loss = 0
+            xx = xx.to(device)
+            yy = yy.to(device)
+
+            for t in range(0, T, step):
+                y = yy[..., t:t + step]
+                im = model(xx)
+                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+
+                if t == 0:
+                    pred = im
+                else:
+                    pred = torch.cat((pred, im), -1)
+
+                xx = torch.cat((xx[..., step:], im), dim=-1)
+
         t2 = default_timer()
         # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
