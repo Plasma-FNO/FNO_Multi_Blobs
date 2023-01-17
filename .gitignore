@@ -1,0 +1,18 @@
+#simvue files
+simvue.ini
+
+#Saved Models
+Models/
+
+#Saved Plot
+Plots/
+
+#Machine Output files
+*.file
+*.out
+
+#Submission Script 
+*.sh
+
+#Data
+*.npy
