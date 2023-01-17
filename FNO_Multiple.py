@@ -10,7 +10,8 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'T',
+                 "Field": 'rho, Phi, T',
+                 "Model": 'Conv3d',
                  "Type": '2D Time',
                  "Epochs": 500,
                  "Batch Size": 20,
@@ -27,7 +28,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Step": 10,
                  "Modes":16,
                  "Width": 32,
-                 "Variables":1, 
+                 "Variables":3, 
                  "Noise":0.0, 
                  }
 
@@ -51,6 +52,7 @@ from matplotlib import cm
 import operator
 from functools import reduce
 from functools import partial
+from collections import OrderedDict
 
 import time 
 from timeit import default_timer
@@ -340,9 +342,76 @@ class MLP(nn.Module):
         x = self.mlp2(x)
         return x
 
-class FNO2d(nn.Module):
+
+class UNet3d(nn.Module):
+
+    def __init__(self, in_channels, out_channels, init_features=64):
+        super(UNet3d, self).__init__()
+
+        features = init_features
+        self.encoder1 = UNet3d._block(in_channels, features, name="enc1")
+        self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
+
+
+        # self.bottleneck = UNet3d._block(features, features * 2, name="bottleneck")
+
+
+        self.upconv1 = nn.ConvTranspose3d(
+            features, features, kernel_size=(3,2,2), stride=2
+        )
+        self.decoder1 = UNet3d._block(features*2, features, name="dec1")
+
+        self.conv = nn.Conv3d(
+            in_channels=features, out_channels=out_channels, kernel_size=1
+        )
+
+    def forward(self, x):
+        enc1 = self.encoder1(x)
+        bottleneck = self.pool1(enc1)
+        dec1 = self.upconv1(bottleneck)
+        dec1 = torch.cat((dec1, enc1), dim=1)
+        dec1 = self.decoder1(dec1)
+        return self.conv(dec1)
+
+    @staticmethod
+    def _block(in_channels, features, name):
+        return nn.Sequential(
+            OrderedDict(
+                [
+                    (
+                        name + "conv1",
+                        nn.Conv3d(
+                            in_channels=in_channels,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            bias=False,
+                        ),
+                    ),
+                    (name + "norm1", nn.BatchNorm3d(num_features=features)),
+                    (name + "tanh1", nn.Tanh()),
+                    # (
+                    #     name + "conv2",
+                    #     nn.Conv3d(
+                    #         in_channels=features,
+                    #         out_channels=features,
+                    #         kernel_size=3,
+                    #         padding=1,
+                    #         bias=False,
+                    #     ),
+                    # ),
+                    # (name + "norm2", nn.BatchNorm3d(num_features=features)),
+                    # (name + "tanh2", nn.Tanh()),
+                ]
+            )
+        )
+
+
+# %%
+
+class FNO2d_Conv3d(nn.Module):
     def __init__(self, modes1, modes2, width):
-        super(FNO2d, self).__init__()
+        super(FNO2d_Conv3d, self).__init__()
 
         """
         The overall network. It contains 4 layers of the Fourier layer.
@@ -375,6 +444,10 @@ class FNO2d(nn.Module):
         self.w1 = nn.Conv2d(self.width, self.width, 1)
         self.w2 = nn.Conv2d(self.width, self.width, 1)
         self.w3 = nn.Conv2d(self.width, self.width, 1)
+        self.C0 = nn.Conv3d(self.width, self.width, 1)
+        self.C1 = nn.Conv3d(self.width, self.width, 1)
+        self.C2 = nn.Conv3d(self.width, self.width, 1)
+        self.C3 = nn.Conv3d(self.width, self.width, 1)
         self.norm = nn.InstanceNorm2d(self.width)
         self.q = MLP(self.width, step, self.width * 4) # output channel is 1: u(x, y)
 
@@ -382,12 +455,14 @@ class FNO2d(nn.Module):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
         x = self.p(x)
-        x = x.permute(0, 3, 1, 2)
+        x = x.permute(0, 4, 1, 2, 3)
+        print(x.shape)
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
         x1 = self.norm(self.conv0(self.norm(x)))
         x1 = self.mlp0(x1)
         x2 = self.w0(x)
+        x3 = self.C0()
         x = x1 + x2
         x = F.gelu(x)
 
@@ -417,19 +492,19 @@ class FNO2d(nn.Module):
     # def get_grid(self, shape, device):
     #     batchsize, size_x, size_y = shape[0], shape[1], shape[2]
     #     gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
-    #     gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+        # gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
     #     gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
-    #     gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+        # gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
     #     return torch.cat((gridx, gridy), dim=-1).to(device)
 
 
 #Using x and y values from the simulation discretisation 
     def get_grid(self, shape, device):
-        batchsize, size_x, size_y = shape[0], shape[1], shape[2]
+        batchsize, size_x, size_y = shape[0], shape[2], shape[3]
         gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
-        gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+        gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
         gridy = torch.tensor(y_grid, dtype=torch.float)
-        gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+        gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1).to(device)
 
 
@@ -451,17 +526,28 @@ data = data_loc + '/Data/MHD_multi_blobs.npz'
 
 # %%
 field = configuration['Field']
-if field == 'Phi':
-    u_sol = np.load(data)['Phi'].astype(np.float32)   / 1e3
-elif field == 'T':
-    u_sol = np.load(data)['T'].astype(np.float32)     / 1e5
-elif field == 'rho':
-    u_sol = np.load(data)['rho'].astype(np.float32)   / 1e19
+num_vars = configuration['Variables']
 
-if configuration['Log Normalisation'] == 'Yes':
-    u_sol = np.log(u_sol)
+u_sol = np.load(data)['rho'].astype(np.float32)  / 1e19
+v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e3
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e5
 
 u_sol = np.nan_to_num(u_sol)
+v_sol = np.nan_to_num(v_sol)
+p_sol = np.nan_to_num(p_sol)
+
+u = torch.from_numpy(u_sol)
+u = u.permute(0, 2, 3, 1)
+
+v = torch.from_numpy(v_sol)
+v = v.permute(0, 2, 3, 1)
+
+p = torch.from_numpy(p_sol)
+p = p.permute(0, 2, 3, 1)
+
+uvp = torch.stack((u,v,p), dim=1)
+
+
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
@@ -488,15 +574,12 @@ T_in = configuration['T_in']
 T = configuration['T_out']
 step = configuration['Step']
 
-np.random.shuffle(u_sol)
-u = torch.from_numpy(u_sol)
-u = u.permute(0, 2, 3, 1)
 
-train_a = u[:ntrain,:,:,:T_in]
-train_u = u[:ntrain,:,:,T_in:T+T_in]
+train_a = uvp[:ntrain,:,:,:,:T_in]
+train_u = uvp[:ntrain,:,:,:,T_in:T+T_in]
 
-test_a = u[-ntest:,:,:,:T_in]
-test_u = u[-ntest:,:,:,T_in:T+T_in]
+test_a = uvp[-ntest:,:,:,:,:T_in]
+test_u = uvp[-ntest:,:,:,:,T_in:T+T_in]
 
 print(train_u.shape)
 print(test_u.shape)
@@ -532,7 +615,8 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 
-model = FNO2d(modes, modes, width)
+if configuration['Model'] == 'Conv3d':
+    model = FNO2d_Conv3d(modes, modes, width)
 # model = model.double()
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
