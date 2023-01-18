@@ -2,11 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Created on 6 Jan 2023
-
 @author: vgopakum
-
 FNO modelled over the MHD data built using JOREK for multi-blob diffusion. 
-
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
@@ -16,13 +13,11 @@ configuration = {"Case": 'Multi-Blobs',
                  "Batch Size": 20,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
-                 "Scheduler Step": 100,
+                 "Scheduler Step": 100 ,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
-                 "Instance Norm": 'No',
                  "Log Normalisation":  'No',
-                 "Physics Normalisation": 'No',
                  "T_in": 30,    
                  "T_out": 70,
                  "Step": 10,
@@ -260,39 +255,37 @@ class LpLoss(object):
         return self.rel(x, y)
 
 # %%
-
-#Adding Gaussian Noise to the training dataset
-class AddGaussianNoise(object):
-    def __init__(self, mean=0., std=1.):
-        self.mean = torch.FloatTensor([mean])
-        self.std = torch.FloatTensor([std])
+'''
+# #Adding Gaussian Noise to the training dataset
+# class AddGaussianNoise(object):
+#     def __init__(self, mean=0., std=1.):
+#         self.mean = torch.FloatTensor([mean])
+#         self.std = torch.FloatTensor([std])
         
-    def __call__(self, tensor):
-        return tensor + torch.randn(tensor.size()).cuda() * self.std + self.mean
+#     def __call__(self, tensor):
+#         return tensor + torch.randn(tensor.size()).cuda() * self.std + self.mean
     
-    def __repr__(self):
-        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
-
-    def cuda(self):
-        self.mean = self.mean.cuda()
-        self.std = self.std.cuda()
-
-    def cpu(self):
-        self.mean = self.mean.cpu()
-        self.std = self.std.cpu()
-
+#     def __repr__(self):
+#         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+#     def cuda(self):
+#         self.mean = self.mean.cuda()
+#         self.std = self.std.cuda()
+#     def cpu(self):
+#         self.mean = self.mean.cpu()
+#         self.std = self.std.cpu()
 # # additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
 # additive_noise.cuda()
-
+'''
 
 # %%
+
 ################################################################
 # fourier layer
 ################################################################
 
-class SpectralConv2d(nn.Module):
+class SpectralConv2d_fast(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2):
-        super(SpectralConv2d, self).__init__()
+        super(SpectralConv2d_fast, self).__init__()
 
         """
         2D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
@@ -311,6 +304,8 @@ class SpectralConv2d(nn.Module):
     def compl_mul2d(self, input, weights):
         # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
         return torch.einsum("bixy,ioxy->boxy", input, weights)
+        # return torch.einsum("bitxy, itopxy->bopxy", input, weights)
+
 
     def forward(self, x):
         batchsize = x.shape[0]
@@ -328,21 +323,11 @@ class SpectralConv2d(nn.Module):
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
 
-class MLP(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels):
-        super(MLP, self).__init__()
-        self.mlp1 = nn.Conv2d(in_channels, mid_channels, 1)
-        self.mlp2 = nn.Conv2d(mid_channels, out_channels, 1)
+# %%
 
-    def forward(self, x):
-        x = self.mlp1(x)
-        x = F.gelu(x)
-        x = self.mlp2(x)
-        return x
-
-class FNO2d(nn.Module):
+class SimpleBlock2d(nn.Module):
     def __init__(self, modes1, modes2, width):
-        super(FNO2d, self).__init__()
+        super(SimpleBlock2d, self).__init__()
 
         """
         The overall network. It contains 4 layers of the Fourier layer.
@@ -360,78 +345,102 @@ class FNO2d(nn.Module):
         self.modes1 = modes1
         self.modes2 = modes2
         self.width = width
-        self.padding = 8 # pad the domain if input is non-periodic
+        self.fc0 = nn.Linear(T_in+2, self.width)
+        # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
 
-        self.p = nn.Linear(T_in+2, self.width) # input channel is T_in + 2: the solution of the previous T_in timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
-        self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv3 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.mlp0 = MLP(self.width, self.width, self.width)
-        self.mlp1 = MLP(self.width, self.width, self.width)
-        self.mlp2 = MLP(self.width, self.width, self.width)
-        self.mlp3 = MLP(self.width, self.width, self.width)
+        self.conv0 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv1 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv2 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv4 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv5 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        # self.w0 = nn.Conv1d(self.width, self.width, 1)
+        # self.w1 = nn.Conv1d(self.width, self.width, 1)
+        # self.w2 = nn.Conv1d(self.width, self.width, 1)
+        # self.w3 = nn.Conv1d(self.width, self.width, 1)
         self.w0 = nn.Conv2d(self.width, self.width, 1)
         self.w1 = nn.Conv2d(self.width, self.width, 1)
         self.w2 = nn.Conv2d(self.width, self.width, 1)
         self.w3 = nn.Conv2d(self.width, self.width, 1)
-        # self.norm = nn.InstanceNorm2d(self.width)
-        self.norm = nn.Identity()
-        self.q = MLP(self.width, step, self.width * 4) # output channel is step size 
+        self.w4 = nn.Conv2d(self.width, self.width, 1)
+        self.w5 = nn.Conv2d(self.width, self.width, 1)
+        # self.bn0 = torch.nn.BatchNorm2d(self.width)
+        # self.bn1 = torch.nn.BatchNorm2d(self.width)
+        # self.bn2 = torch.nn.BatchNorm2d(self.width)
+        # self.bn3 = torch.nn.BatchNorm2d(self.width)
+
+
+        self.fc1 = nn.Linear(self.width, 128)
+        self.fc2 = nn.Linear(128, step)
 
     def forward(self, x):
-        grid = self.get_grid(x.shape, x.device)
-        x = torch.cat((x, grid), dim=-1)
-        x = self.p(x)
-        x = x.permute(0, 3, 1, 2)
-        # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
+      batchsize = x.shape[0]
+      size_x, size_y = x.shape[1], x.shape[2]
 
-        x1 = self.norm(self.conv0(self.norm(x)))
-        x1 = self.mlp0(x1)
-        x2 = self.w0(x)
-        x = x1 + x2
-        x = F.gelu(x)
+      x = self.fc0(x)
+      x = x.permute(0, 3, 1, 2)
 
-        x1 = self.norm(self.conv1(self.norm(x)))
-        x1 = self.mlp1(x1)
-        x2 = self.w1(x)
-        x = x1 + x2
-        x = F.gelu(x)
+      x1 = self.conv0(x)
+      x2 = self.w0(x)
+    #   x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn0(x1 + x2)
+      x = x1+x2
+      x = F.gelu(x)
 
-        x1 = self.norm(self.conv2(self.norm(x)))
-        x1 = self.mlp2(x1)
-        x2 = self.w2(x)
-        x = x1 + x2
-        x = F.gelu(x)
+      x1 = self.conv1(x)
+      x2 = self.w1(x)
+    #   x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn1(x1 + x2)
+      x = x1+x2
+      x = F.gelu(x)
 
-        x1 = self.norm(self.conv3(self.norm(x)))
-        x1 = self.mlp3(x1)
-        x2 = self.w3(x)
-        x = x1 + x2
+      x1 = self.conv2(x)
+      x2 = self.w2(x)
+    #   x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn2(x1 + x2)
+      x = x1+x2
+      x = F.gelu(x)
 
-        # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
-        x = self.q(x)
-        x = x.permute(0, 2, 3, 1)
+      x1 = self.conv3(x)
+      x2 = self.w3(x)
+    #   x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn3(x1 + x2)
+      x = x1+x2
+
+      x1 = self.conv4(x)
+      x2 = self.w4(x)
+    #   x2 = self.w4(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn4(x1 + x2)
+      x = x1+x2
+
+
+      x1 = self.conv5(x)
+      x2 = self.w5(x)
+    #   x2 = self.w5(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn5(x1 + x2)
+      x = x1+x2
+
+
+      x = x.permute(0, 2, 3, 1)
+      x = self.fc1(x)
+      x = F.gelu(x)
+      x = self.fc2(x)
+      return x
+
+class Net2d(nn.Module):
+    def __init__(self, modes, width):
+        super(Net2d, self).__init__()
+
+        """
+        A wrapper function
+        """
+
+        self.conv1 = SimpleBlock2d(modes, modes, width)
+
+
+    def forward(self, x):
+        x = self.conv1(x)
         return x
-
-Arbitrary grid discretisation 
-    def get_grid(self, shape, device):
-        batchsize, size_x, size_y = shape[0], shape[1], shape[2]
-        gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
-        gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
-        gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
-        gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
-        return torch.cat((gridx, gridy), dim=-1).to(device)
-
-
-# #Using x and y values from the simulation discretisation 
-#     def get_grid(self, shape, device):
-#         batchsize, size_x, size_y = shape[0], shape[1], shape[2]
-#         gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
-#         gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
-#         gridy = torch.tensor(y_grid, dtype=torch.float)
-#         gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
-#         return torch.cat((gridx, gridy), dim=-1).to(device)
 
 
     def count_params(self):
@@ -440,6 +449,7 @@ Arbitrary grid discretisation
             c += reduce(operator.mul, list(p.size()))
 
         return c
+
 
 # %%
 
@@ -453,26 +463,24 @@ data = data_loc + '/Data/MHD_multi_blobs.npz'
 # %%
 field = configuration['Field']
 if field == 'Phi':
-    u_sol = np.load(data)['Phi'].astype(np.float32)   #/ 1e3
+    u_sol = np.load(data)['Phi'].astype(np.float32)  # / 1e3
 elif field == 'T':
-    u_sol = np.load(data)['T'].astype(np.float32)     #/ 1e5
+    u_sol = np.load(data)['T'].astype(np.float32)    # / 1e6
 elif field == 'rho':
-    u_sol = np.load(data)['rho'].astype(np.float32)   #/ 1e19
-#
+    u_sol = np.load(data)['rho'].astype(np.float32)  # / 1e20
+
 if configuration['Log Normalisation'] == 'Yes':
     u_sol = np.log(u_sol)
 
 u_sol = np.nan_to_num(u_sol)
-x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
-y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
-t_grid = np.load(data)['time'].astype(np.float32)
+x = np.load(data)['Rgrid'][0,:].astype(np.float32)
+y = np.load(data)['Zgrid'][:,0].astype(np.float32)
+t = np.load(data)['time'].astype(np.float32)
 
 
 ntrain = 240
 ntest = 20
 S = 106 #Grid Size
-size_x = S
-size_y = S
 
 
 modes = configuration['Modes']
@@ -520,6 +528,14 @@ test_u_encoded = y_normalizer.encode(test_u)
 
 
 # %%
+# pad the location (x,y)
+gridx = torch.tensor(x, dtype=torch.float)
+gridx = gridx.reshape(1, S, 1, 1).repeat([1, 1, S, 1])
+gridy = torch.tensor(y, dtype=torch.float)
+gridy = gridy.reshape(1, 1, S, 1).repeat([1, S, 1, 1])
+
+train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1])), dim=-1)
+test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1])), dim=-1)
 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
@@ -533,7 +549,7 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 
-model = FNO2d(modes, modes, width)
+model = Net2d(modes, width)
 # model = model.double()
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
@@ -548,7 +564,8 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['
 
 
 myloss = LpLoss(size_average=False)
-
+gridx = gridx.to(device)
+gridy = gridy.to(device)
 
 # %%
 
@@ -558,7 +575,7 @@ if torch.cuda.is_available():
 
 # %%
 start_time = time.time()
-for ep in range(epochs):
+for ep in tqdm(range(epochs)):
     model.train()
     t1 = default_timer()
     train_l2_step = 0
@@ -579,7 +596,8 @@ for ep in range(epochs):
             else:
                 pred = torch.cat((pred, im), -1)
 
-            xx = torch.cat((xx[..., step:], im), dim=-1)
+            xx = torch.cat((xx[..., step:-2], im,
+                            gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
 
         train_l2_step += loss.item()
         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
@@ -587,8 +605,8 @@ for ep in range(epochs):
 
         optimizer.zero_grad()
         loss.backward()
+        # l2_full.backward()
         optimizer.step()
-        scheduler.step()
 
     test_l2_step = 0
     test_l2_full = 0
@@ -608,21 +626,26 @@ for ep in range(epochs):
                 else:
                     pred = torch.cat((pred, im), -1)
 
-                xx = torch.cat((xx[..., step:], im), dim=-1)
+                xx = torch.cat((xx[..., step:-2], im,
+                                gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
+
+            # pred = y_normalizer.decode(pred)
 
             test_l2_step += loss.item()
             test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
 
     t2 = default_timer()
-    train_loss = train_l2_full/ntrain
-    test_loss = test_l2_full/ntest
+    scheduler.step()
+
+    train_loss = train_l2_full / ntrain
+    test_loss = test_l2_full / ntest
 
     print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss per step: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_l2_step / ntest / (T / step), test_loss))
-    
+
     run.log_metrics({'Train Loss': train_loss, 
                     'Test Loss': test_loss})
+
 train_time = time.time() - start_time
-   
 # %%
 #Saving the Model
 model_loc = file_loc + '/Models/FNO_multi_blobs_' + run.name + '.pth'
@@ -633,25 +656,25 @@ torch.save(model.state_dict(),  model_loc)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
 pred_set = torch.zeros(test_u.shape)
 index = 0
-
 with torch.no_grad():
-        for xx, yy in test_loader:
-            loss = 0
-            xx = xx.to(device)
-            yy = yy.to(device)
+    for xx, yy in tqdm(test_loader):
+        loss = 0
+        xx, yy = xx.to(device), yy.to(device)
+        # xx = additive_noise(xx)
+        t1 = default_timer()
+        for t in range(0, T, step):
+            y = yy[..., t:t + step]
+            out = model(xx)
 
-            for t in range(0, T, step):
-                y = yy[..., t:t + step]
-                im = model(xx)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            loss += myloss(out.reshape(1, -1), y.reshape(1, -1))
 
-                if t == 0:
-                    pred = im
-                else:
-                    pred = torch.cat((pred, im), -1)
+            if t == 0:
+                pred = out
+            else:
+                pred = torch.cat((pred, out), -1)       
 
-                xx = torch.cat((xx[..., step:], im), dim=-1)
-
+            xx = torch.cat((xx[..., step:-2], out,
+                                gridx.repeat([1, 1, 1, 1]), gridy.repeat([1, 1, 1, 1])), dim=-1)
         t2 = default_timer()
         # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
@@ -764,8 +787,8 @@ for code_file in CODE:
         run.save_directory(code_file, 'code', 'text/plain', preserve_path=True)
     else:
         print('ERROR: code file %s does not exist' % code_file)
-        
-     
+
+
 # Save input files
 for input_file in INPUTS:
     if os.path.isfile(input_file):
@@ -774,8 +797,8 @@ for input_file in INPUTS:
         run.save_directory(input_file, 'input', 'text/plain', preserve_path=True)
     else:
         print('ERROR: input file %s does not exist' % input_file)
-        
-       
+
+
 # Save output files
 for output_file in OUTPUTS:
     if os.path.isfile(output_file):
@@ -784,7 +807,5 @@ for output_file in OUTPUTS:
         run.save_directory(output_file, 'output', 'text/plain', preserve_path=True)   
     else:
         print('ERROR: output file %s does not exist' % output_file)
-    
-run.close()
 
-# %%
+run.close()
