@@ -367,14 +367,20 @@ class FNO2d(nn.Module):
         self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv3 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.mlp0 = MLP(self.width, self.width, self.width)
-        self.mlp1 = MLP(self.width, self.width, self.width)
-        self.mlp2 = MLP(self.width, self.width, self.width)
-        self.mlp3 = MLP(self.width, self.width, self.width)
+        self.conv4 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.conv5 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        # self.mlp0 = MLP(self.width, self.width, self.width)
+        # self.mlp1 = MLP(self.width, self.width, self.width)
+        # self.mlp2 = MLP(self.width, self.width, self.width)
+        # self.mlp3 = MLP(self.width, self.width, self.width)
+        # self.mlp4 = MLP(self.width, self.width, self.width)
+        # self.mlp5 = MLP(self.width, self.width, self.width)
         self.w0 = nn.Conv2d(self.width, self.width, 1)
         self.w1 = nn.Conv2d(self.width, self.width, 1)
         self.w2 = nn.Conv2d(self.width, self.width, 1)
         self.w3 = nn.Conv2d(self.width, self.width, 1)
+        self.w4 = nn.Conv2d(self.width, self.width, 1)
+        self.w5 = nn.Conv2d(self.width, self.width, 1)
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
         self.q = MLP(self.width, step, self.width * 4) # output channel is step size 
@@ -387,26 +393,36 @@ class FNO2d(nn.Module):
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
         x1 = self.norm(self.conv0(self.norm(x)))
-        x1 = self.mlp0(x1)
+        # x1 = self.mlp0(x1)
         x2 = self.w0(x)
         x = x1 + x2
         x = F.gelu(x)
 
         x1 = self.norm(self.conv1(self.norm(x)))
-        x1 = self.mlp1(x1)
+        # x1 = self.mlp1(x1)
         x2 = self.w1(x)
         x = x1 + x2
         x = F.gelu(x)
 
         x1 = self.norm(self.conv2(self.norm(x)))
-        x1 = self.mlp2(x1)
+        # x1 = self.mlp2(x1)
         x2 = self.w2(x)
         x = x1 + x2
         x = F.gelu(x)
 
         x1 = self.norm(self.conv3(self.norm(x)))
-        x1 = self.mlp3(x1)
+        # x1 = self.mlp3(x1)
         x2 = self.w3(x)
+        x = x1 + x2
+
+        x1 = self.norm(self.conv4(self.norm(x)))
+        # x1 = self.mlp4(x1)
+        x2 = self.w4(x)
+        x = x1 + x2
+
+        x1 = self.norm(self.conv5(self.norm(x)))
+        # x1 = self.mlp5(x1)
+        x2 = self.w5(x)
         x = x1 + x2
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
