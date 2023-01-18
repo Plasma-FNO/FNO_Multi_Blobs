@@ -414,24 +414,24 @@ class FNO2d(nn.Module):
         x = x.permute(0, 2, 3, 1)
         return x
 
-Arbitrary grid discretisation 
-    def get_grid(self, shape, device):
-        batchsize, size_x, size_y = shape[0], shape[1], shape[2]
-        gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
-        gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
-        gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
-        gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
-        return torch.cat((gridx, gridy), dim=-1).to(device)
+#Arbitrary grid discretisation 
+    # def get_grid(self, shape, device):
+    #     batchsize, size_x, size_y = shape[0], shape[1], shape[2]
+    #     gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
+    #     gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+    #     gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
+    #     gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+    #     return torch.cat((gridx, gridy), dim=-1).to(device)
 
 
 # #Using x and y values from the simulation discretisation 
-#     def get_grid(self, shape, device):
-#         batchsize, size_x, size_y = shape[0], shape[1], shape[2]
-#         gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
-#         gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
-#         gridy = torch.tensor(y_grid, dtype=torch.float)
-#         gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
-#         return torch.cat((gridx, gridy), dim=-1).to(device)
+    def get_grid(self, shape, device):
+        batchsize, size_x, size_y = shape[0], shape[1], shape[2]
+        gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
+        gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+        gridy = torch.tensor(y_grid, dtype=torch.float)
+        gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+        return torch.cat((gridx, gridy), dim=-1).to(device)
 
 
     def count_params(self):
@@ -558,7 +558,7 @@ if torch.cuda.is_available():
 
 # %%
 start_time = time.time()
-for ep in range(epochs):
+for ep in tqdm(range(epochs)):
     model.train()
     t1 = default_timer()
     train_l2_step = 0
@@ -588,7 +588,6 @@ for ep in range(epochs):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        scheduler.step()
 
     test_l2_step = 0
     test_l2_full = 0
@@ -614,8 +613,10 @@ for ep in range(epochs):
             test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
 
     t2 = default_timer()
-    train_loss = train_l2_full/ntrain
-    test_loss = test_l2_full/ntest
+    scheduler.step()
+    
+    train_loss = train_l2_full / ntrain
+    test_loss = test_l2_full / ntest
 
     print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss per step: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_l2_step / ntest / (T / step), test_loss))
     
@@ -630,27 +631,29 @@ torch.save(model.state_dict(),  model_loc)
 
 # %%
 #Testing 
+batch_size = 1 
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
 pred_set = torch.zeros(test_u.shape)
 index = 0
 
 with torch.no_grad():
-        for xx, yy in test_loader:
+        for xx, yy in tqdm(test_loader):
             loss = 0
             xx = xx.to(device)
             yy = yy.to(device)
+            t1 = default_timer()
 
             for t in range(0, T, step):
                 y = yy[..., t:t + step]
-                im = model(xx)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                out = model(xx)
+                loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
                 if t == 0:
-                    pred = im
+                    pred = out
                 else:
-                    pred = torch.cat((pred, im), -1)
+                    pred = torch.cat((pred, out), -1)
 
-                xx = torch.cat((xx[..., step:], im), dim=-1)
+                xx = torch.cat((xx[..., step:], out), dim=-1)
 
         t2 = default_timer()
         # pred = y_normalizer.decode(pred)
