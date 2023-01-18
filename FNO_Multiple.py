@@ -293,26 +293,30 @@ class LpLoss(object):
 ################################################################
 
 class SpectralConv2d(nn.Module):
-    def __init__(self, in_channels, out_channels, modes1, modes2):
+    def __init__(self, in_channel_1, out_channel_1, in_channel_2, out_channel_2, modes1, modes2):
         super(SpectralConv2d, self).__init__()
 
         """
         2D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
         """
 
-        self.in_channels = in_channels
-        self.out_channels = out_channels
+        self.in_channel_1 = in_channel_1
+        self.out_channel_1 = out_channel_1
+
+        self.in_channel_2 = in_channel_2
+        self.out_channel_2 = out_channel_2
+
         self.modes1 = modes1 #Number of Fourier modes to multiply, at most floor(N/2) + 1
         self.modes2 = modes2
 
-        self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.scale = (1 / (in_channel_1 * out_channel_1))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channel_1, out_channel_1, in_channel_2, out_channel_2, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channel_1, out_channel_1, in_channel_2, out_channel_2, self.modes1, self.modes2, dtype=torch.cfloat))
 
     # Complex multiplication
     def compl_mul2d(self, input, weights):
         # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
-        return torch.einsum("bixy,ioxy->boxy", input, weights)
+        return torch.einsum("bipxy,ioqxy->boqxy", input, weights)
 
     def forward(self, x):
         batchsize = x.shape[0]

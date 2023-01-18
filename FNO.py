@@ -10,7 +10,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'T',
+                 "Field": 'Phi',
                  "Type": '2D Time',
                  "Epochs": 500,
                  "Batch Size": 20,
@@ -22,6 +22,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Normalisation Strategy": 'Min-Max',
                  "Instance Norm": 'Yes',
                  "Log Normalisation":  'No',
+                 "Physics Normalisation": 'No',
                  "T_in": 30,    
                  "T_out": 70,
                  "Step": 10,
@@ -376,6 +377,7 @@ class FNO2d(nn.Module):
         self.w2 = nn.Conv2d(self.width, self.width, 1)
         self.w3 = nn.Conv2d(self.width, self.width, 1)
         self.norm = nn.InstanceNorm2d(self.width)
+        # self.norm = nn.Identity()
         self.q = MLP(self.width, step, self.width * 4) # output channel is 1: u(x, y)
 
     def forward(self, x):
@@ -452,12 +454,12 @@ data = data_loc + '/Data/MHD_multi_blobs.npz'
 # %%
 field = configuration['Field']
 if field == 'Phi':
-    u_sol = np.load(data)['Phi'].astype(np.float32)   / 1e3
+    u_sol = np.load(data)['Phi'].astype(np.float32)   #/ 1e3
 elif field == 'T':
-    u_sol = np.load(data)['T'].astype(np.float32)     / 1e5
+    u_sol = np.load(data)['T'].astype(np.float32)     #/ 1e5
 elif field == 'rho':
-    u_sol = np.load(data)['rho'].astype(np.float32)   / 1e19
-
+    u_sol = np.load(data)['rho'].astype(np.float32)   #/ 1e19
+#
 if configuration['Log Normalisation'] == 'Yes':
     u_sol = np.log(u_sol)
 
