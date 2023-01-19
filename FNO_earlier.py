@@ -325,9 +325,9 @@ class SpectralConv2d_fast(nn.Module):
 
 # %%
 
-class SimpleBlock2d(nn.Module):
+class FNO2d(nn.Module):
     def __init__(self, modes1, modes2, width):
-        super(SimpleBlock2d, self).__init__()
+        super(FNO2d, self).__init__()
 
         """
         The overall network. It contains 4 layers of the Fourier layer.
@@ -354,94 +354,67 @@ class SimpleBlock2d(nn.Module):
         self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
         self.conv4 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
         self.conv5 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        # self.w0 = nn.Conv1d(self.width, self.width, 1)
-        # self.w1 = nn.Conv1d(self.width, self.width, 1)
-        # self.w2 = nn.Conv1d(self.width, self.width, 1)
-        # self.w3 = nn.Conv1d(self.width, self.width, 1)
+
         self.w0 = nn.Conv2d(self.width, self.width, 1)
         self.w1 = nn.Conv2d(self.width, self.width, 1)
         self.w2 = nn.Conv2d(self.width, self.width, 1)
         self.w3 = nn.Conv2d(self.width, self.width, 1)
         self.w4 = nn.Conv2d(self.width, self.width, 1)
         self.w5 = nn.Conv2d(self.width, self.width, 1)
-        # self.bn0 = torch.nn.BatchNorm2d(self.width)
-        # self.bn1 = torch.nn.BatchNorm2d(self.width)
-        # self.bn2 = torch.nn.BatchNorm2d(self.width)
-        # self.bn3 = torch.nn.BatchNorm2d(self.width)
-
 
         self.fc1 = nn.Linear(self.width, 128)
         self.fc2 = nn.Linear(128, step)
 
     def forward(self, x):
-      batchsize = x.shape[0]
-      size_x, size_y = x.shape[1], x.shape[2]
+        grid = self.get_grid(x.shape, x.device)
+        x = torch.cat((x, grid), dim=-1)
 
-      x = self.fc0(x)
-      x = x.permute(0, 3, 1, 2)
+        x = self.fc0(x)
+        x = x.permute(0, 3, 1, 2)
 
-      x1 = self.conv0(x)
-      x2 = self.w0(x)
-    #   x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn0(x1 + x2)
-      x = x1+x2
-      x = F.gelu(x)
+        x1 = self.conv0(x)
+        x2 = self.w0(x)
+        x = x1+x2
+        x = F.gelu(x)
 
-      x1 = self.conv1(x)
-      x2 = self.w1(x)
-    #   x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn1(x1 + x2)
-      x = x1+x2
-      x = F.gelu(x)
+        x1 = self.conv1(x)
+        x2 = self.w1(x)
+        x = x1+x2
+        x = F.gelu(x)
 
-      x1 = self.conv2(x)
-      x2 = self.w2(x)
-    #   x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn2(x1 + x2)
-      x = x1+x2
-      x = F.gelu(x)
+        x1 = self.conv2(x)
+        x2 = self.w2(x)
+        x = x1+x2
+        x = F.gelu(x)
 
-      x1 = self.conv3(x)
-      x2 = self.w3(x)
-    #   x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn3(x1 + x2)
-      x = x1+x2
+        x1 = self.conv3(x)
+        x2 = self.w3(x)
+        x = x1+x2
 
-      x1 = self.conv4(x)
-      x2 = self.w4(x)
-    #   x2 = self.w4(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn4(x1 + x2)
-      x = x1+x2
+        x1 = self.conv4(x)
+        x2 = self.w4(x)
+        x = x1+x2
 
 
-      x1 = self.conv5(x)
-      x2 = self.w5(x)
-    #   x2 = self.w5(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn5(x1 + x2)
-      x = x1+x2
+        x1 = self.conv5(x)
+        x2 = self.w5(x)
+        x = x1+x2
 
 
-      x = x.permute(0, 2, 3, 1)
-      x = self.fc1(x)
-      x = F.gelu(x)
-      x = self.fc2(x)
-      return x
-
-class Net2d(nn.Module):
-    def __init__(self, modes, width):
-        super(Net2d, self).__init__()
-
-        """
-        A wrapper function
-        """
-
-        self.conv1 = SimpleBlock2d(modes, modes, width)
-
-
-    def forward(self, x):
-        x = self.conv1(x)
+        x = x.permute(0, 2, 3, 1)
+        x = self.fc1(x)
+        x = F.gelu(x)
+        x = self.fc2(x)
         return x
 
+#Using x and y values from the simulation discretisation 
+    def get_grid(self, shape, device):
+        batchsize, size_x, size_y = shape[0], shape[1], shape[2]
+        gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
+        gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+        gridy = torch.tensor(y_grid, dtype=torch.float)
+        gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+        return torch.cat((gridx, gridy), dim=-1).to(device)
 
     def count_params(self):
         c = 0
@@ -473,15 +446,14 @@ if configuration['Log Normalisation'] == 'Yes':
     u_sol = np.log(u_sol)
 
 u_sol = np.nan_to_num(u_sol)
-x = np.load(data)['Rgrid'][0,:].astype(np.float32)
-y = np.load(data)['Zgrid'][:,0].astype(np.float32)
-t = np.load(data)['time'].astype(np.float32)
 
+x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
+y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
+t_grid = np.load(data)['time'].astype(np.float32)
 
 ntrain = 240
 ntest = 20
 S = 106 #Grid Size
-
 
 modes = configuration['Modes']
 width = configuration['Width']
@@ -528,15 +500,6 @@ test_u_encoded = y_normalizer.encode(test_u)
 
 
 # %%
-# pad the location (x,y)
-gridx = torch.tensor(x, dtype=torch.float)
-gridx = gridx.reshape(1, S, 1, 1).repeat([1, 1, S, 1])
-gridy = torch.tensor(y, dtype=torch.float)
-gridy = gridy.reshape(1, 1, S, 1).repeat([1, S, 1, 1])
-
-train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1])), dim=-1)
-test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1])), dim=-1)
-
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
 
@@ -549,7 +512,7 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 
-model = Net2d(modes, width)
+model = FNO2d(modes, modes, width)
 # model = model.double()
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
@@ -562,10 +525,7 @@ print("Number of model params : " + str(model.count_params()))
 optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
-
 myloss = LpLoss(size_average=False)
-gridx = gridx.to(device)
-gridy = gridy.to(device)
 
 # %%
 
@@ -596,8 +556,7 @@ for ep in tqdm(range(epochs)):
             else:
                 pred = torch.cat((pred, im), -1)
 
-            xx = torch.cat((xx[..., step:-2], im,
-                            gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
+            xx = torch.cat((xx[..., step:], im), dim=-1)
 
         train_l2_step += loss.item()
         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
@@ -626,8 +585,7 @@ for ep in tqdm(range(epochs)):
                 else:
                     pred = torch.cat((pred, im), -1)
 
-                xx = torch.cat((xx[..., step:-2], im,
-                                gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
+            xx = torch.cat((xx[..., step:], im), dim=-1)
 
             # pred = y_normalizer.decode(pred)
 
@@ -665,16 +623,15 @@ with torch.no_grad():
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
-
-            loss += myloss(out.reshape(1, -1), y.reshape(1, -1))
+            loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             if t == 0:
                 pred = out
             else:
                 pred = torch.cat((pred, out), -1)       
 
-            xx = torch.cat((xx[..., step:-2], out,
-                                gridx.repeat([1, 1, 1, 1]), gridy.repeat([1, 1, 1, 1])), dim=-1)
+            xx = torch.cat((xx[..., step:], out), dim=-1)
+
         t2 = default_timer()
         # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
