@@ -13,7 +13,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
                  "Model": 'Conv3d',
                  "Type": '2D Time',
-                 "Epochs": 500,
+                 "Epochs": 5,
                  "Batch Size": 20,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
@@ -803,7 +803,8 @@ if configuration['Log Normalisation'] == 'Yes':
     test_u = torch.exp(test_u)
     pred_set = torch.exp(pred_set)
 
-u_field = test_u[idx]
+
+u_field = test_u[idx][0]
 
 v_min_1 = torch.min(u_field[:,:,0])
 v_max_1 = torch.max(u_field[:,:,0])
@@ -841,7 +842,7 @@ ax.axes.yaxis.set_ticks([])
 fig.colorbar(pcm, pad=0.05)
 
 
-u_field = pred_set[idx]
+u_field = pred_set[idx][0]
 
 ax = fig.add_subplot(2,3,4)
 pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
@@ -861,11 +862,138 @@ pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5
 ax.axes.xaxis.set_ticks([])
 ax.axes.yaxis.set_ticks([])
 fig.colorbar(pcm, pad=0.05)
+plt.title('Density')
 
+output_plot_density = file_loc + '/Plots/MultiBlobs_'  + run.name +  '_Density' + '.png'
+plt.savefig(output_plot_density)
+
+# %% 
+u_field = test_u[idx][2]
+
+v_min_1 = torch.min(u_field[:,:,0])
+v_max_1 = torch.max(u_field[:,:,0])
+
+v_min_2 = torch.min(u_field[:, :, int(T/2)])
+v_max_2 = torch.max(u_field[:, :, int(T/2)])
+
+v_min_3 = torch.min(u_field[:, :, -1])
+v_max_3 = torch.max(u_field[:, :, -1])
+
+fig = plt.figure(figsize=plt.figaspect(0.5))
+ax = fig.add_subplot(2,3,1)
+pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# ax.title.set_text('Initial')
+ax.title.set_text('t='+ str(T_in))
+ax.set_ylabel('Solution')
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,2)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# ax.title.set_text('Middle')
+ax.title.set_text('t='+ str(int((T+T_in)/2)))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,3)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# ax.title.set_text('Final')
+ax.title.set_text('t='+str(T+T_in))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+u_field = pred_set[idx][1]
+
+ax = fig.add_subplot(2,3,4)
+pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+ax.set_ylabel('FNO')
+
+fig.colorbar(pcm, pad=0.05)
+
+ax = fig.add_subplot(2,3,5)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,6)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+plt.title('Density')
+
+output_plot_potential = file_loc + '/Plots/MultiBlobs_'  + run.name +  '_Potential' + '.png'
+plt.savefig(output_plot_potential)
 
 # %%
-output_plot = file_loc + '/Plots/MultiBlobs_' + configuration['Field'] + '_' + run.name + '.png'
-plt.savefig(output_plot)
+u_field = test_u[idx][2]
+
+v_min_1 = torch.min(u_field[:,:,0])
+v_max_1 = torch.max(u_field[:,:,0])
+
+v_min_2 = torch.min(u_field[:, :, int(T/2)])
+v_max_2 = torch.max(u_field[:, :, int(T/2)])
+
+v_min_3 = torch.min(u_field[:, :, -1])
+v_max_3 = torch.max(u_field[:, :, -1])
+
+fig = plt.figure(figsize=plt.figaspect(0.5))
+ax = fig.add_subplot(2,3,1)
+pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# ax.title.set_text('Initial')
+ax.title.set_text('t='+ str(T_in))
+ax.set_ylabel('Solution')
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,2)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# ax.title.set_text('Middle')
+ax.title.set_text('t='+ str(int((T+T_in)/2)))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,3)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# ax.title.set_text('Final')
+ax.title.set_text('t='+str(T+T_in))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+u_field = pred_set[idx][2]
+
+ax = fig.add_subplot(2,3,4)
+pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+ax.set_ylabel('FNO')
+
+fig.colorbar(pcm, pad=0.05)
+
+ax = fig.add_subplot(2,3,5)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,6)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+plt.title('Density')
+
+output_plot_temp = file_loc + '/Plots/MultiBlobs_'  + run.name +  '_Temp' + '.png'
+plt.savefig(output_plot_temp)
 
 # %%
 
