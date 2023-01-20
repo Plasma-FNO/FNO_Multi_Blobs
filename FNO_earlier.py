@@ -13,11 +13,13 @@ configuration = {"Case": 'Multi-Blobs',
                  "Batch Size": 20,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
-                 "Scheduler Step": 100 ,
+                 "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
+                 "Instance Norm": 'No',
                  "Log Normalisation":  'No',
+                 "Physics Normalisation": 'No',
                  "T_in": 30,    
                  "T_out": 70,
                  "Step": 10,
@@ -279,6 +281,18 @@ class LpLoss(object):
 
 # %%
 
+class MLP(nn.Module):
+    def __init__(self, in_channels, out_channels, mid_channels):
+        super(MLP, self).__init__()
+        self.mlp1 = nn.Conv2d(in_channels, mid_channels, 1)
+        self.mlp2 = nn.Conv2d(mid_channels, out_channels, 1)
+
+    def forward(self, x):
+        x = self.mlp1(x)
+        x = F.gelu(x)
+        x = self.mlp2(x)
+        return x
+
 ################################################################
 # fourier layer
 ################################################################
@@ -354,6 +368,13 @@ class FNO2d(nn.Module):
         self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
         self.conv4 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
         self.conv5 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        
+        # self.mlp0 = MLP(self.width, self.width, self.width)
+        # self.mlp1 = MLP(self.width, self.width, self.width)
+        # self.mlp2 = MLP(self.width, self.width, self.width)
+        # self.mlp3 = MLP(self.width, self.width, self.width)
+        # self.mlp4 = MLP(self.width, self.width, self.width)
+        # self.mlp5 = MLP(self.width, self.width, self.width)
 
         self.w0 = nn.Conv2d(self.width, self.width, 1)
         self.w1 = nn.Conv2d(self.width, self.width, 1)
@@ -361,6 +382,9 @@ class FNO2d(nn.Module):
         self.w3 = nn.Conv2d(self.width, self.width, 1)
         self.w4 = nn.Conv2d(self.width, self.width, 1)
         self.w5 = nn.Conv2d(self.width, self.width, 1)
+
+        # self.norm = nn.InstanceNorm2d(self.width)
+        # self.norm = nn.Identity()
 
         self.fc1 = nn.Linear(self.width, 128)
         self.fc2 = nn.Linear(128, step)
@@ -373,33 +397,37 @@ class FNO2d(nn.Module):
         x = x.permute(0, 3, 1, 2)
 
         x1 = self.conv0(x)
+        # x1 = self.mlp0(x1)
         x2 = self.w0(x)
         x = x1+x2
         x = F.gelu(x)
 
         x1 = self.conv1(x)
+        # x1 = self.mlp1(x1)    
         x2 = self.w1(x)
         x = x1+x2
         x = F.gelu(x)
 
         x1 = self.conv2(x)
+        # x1 = self.mlp2(x1)
         x2 = self.w2(x)
         x = x1+x2
         x = F.gelu(x)
 
         x1 = self.conv3(x)
+        # x1 = self.mlp3(x1)
         x2 = self.w3(x)
         x = x1+x2
 
         x1 = self.conv4(x)
+        # x1 = self.mlp4(x1)
         x2 = self.w4(x)
         x = x1+x2
 
-
         x1 = self.conv5(x)
+        # x1 = self.mlp5(x1)
         x2 = self.w5(x)
         x = x1+x2
-
 
         x = x.permute(0, 2, 3, 1)
         x = self.fc1(x)
@@ -415,6 +443,15 @@ class FNO2d(nn.Module):
         gridy = torch.tensor(y_grid, dtype=torch.float)
         gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1).to(device)
+
+## Arbitrary grid discretisation 
+    # def get_grid(self, shape, device):
+    #     batchsize, size_x, size_y = shape[0], shape[1], shape[2]
+    #     gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
+    #     gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+    #     gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
+    #     gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+    #     return torch.cat((gridx, gridy), dim=-1).to(device)
 
     def count_params(self):
         c = 0
@@ -732,7 +769,7 @@ plt.savefig(output_plot)
 
 # %%
 
-CODE = ['FNO.py']
+CODE = ['FNO_earlier.py']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot]
 
