@@ -288,52 +288,10 @@ class LpLoss(object):
 
 
 # %%
-################################################################
-# fourier layer
-################################################################
 
-class SpectralConv2d(nn.Module):
-    def __init__(self, in_channel_1, out_channel_1, in_channel_2, out_channel_2, modes1, modes2):
-        super(SpectralConv2d, self).__init__()
 
-        """
-        2D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
-        """
-
-        self.in_channel_1 = in_channel_1
-        self.out_channel_1 = out_channel_1
-
-        self.in_channel_2 = in_channel_2
-        self.out_channel_2 = out_channel_2
-
-        self.modes1 = modes1 #Number of Fourier modes to multiply, at most floor(N/2) + 1
-        self.modes2 = modes2
-
-        self.scale = (1 / (in_channel_1 * out_channel_1))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channel_1, out_channel_1, in_channel_2, out_channel_2, self.modes1, self.modes2, dtype=torch.cfloat))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channel_1, out_channel_1, in_channel_2, out_channel_2, self.modes1, self.modes2, dtype=torch.cfloat))
-
-    # Complex multiplication
-    def compl_mul2d(self, input, weights):
-        # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
-        return torch.einsum("bipxy,ioqxy->boqxy", input, weights)
-
-    def forward(self, x):
-        batchsize = x.shape[0]
-        #Compute Fourier coeffcients up to factor of e^(- something constant)
-        x_ft = torch.fft.rfft2(x)
-
-        # Multiply relevant Fourier modes
-        out_ft = torch.zeros(batchsize, self.out_channels,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
-        out_ft[:, :, :self.modes1, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
-        out_ft[:, :, -self.modes1:, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
-
-        #Return to physical space
-        x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
-        return x
-
+# %%
+#Defining Model Parts
 class MLP(nn.Module):
     def __init__(self, in_channels, out_channels, mid_channels):
         super(MLP, self).__init__()
@@ -411,11 +369,56 @@ class UNet3d(nn.Module):
         )
 
 
+################################################################
+# fourier layer
+################################################################
+
+class SpectralConv2d(nn.Module):
+    def __init__(self, in_channels_time, out_channels_time, in_channels_dim, out_channels_dim, modes1, modes2):
+        super(SpectralConv2d, self).__init__()
+
+        """
+        2D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
+        """
+
+        self.in_channels_time = in_channels_time
+        self.out_channels_time = out_channels_time
+        self.in_channels_dim = in_channels_dim
+        self.out_channels_dim = out_channels_dim
+        self.modes1 = modes1 #Number of Fourier modes to multiply, at most floor(N/2) + 1
+        self.modes2 = modes2
+
+        self.scale = (1 / (in_channels_time * out_channels_time))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels_time, out_channels_time, in_channels_dim, out_channels_dim, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels_time, out_channels_time, in_channels_dim, out_channels_dim, self.modes1, self.modes2, dtype=torch.cfloat))
+    # Complex multiplication
+    def compl_mul2d(self, input, weights):
+        # (batch, in_channel_time, in_channel_dim x,y ), (in_channel_time, out_channel_time, in_channel_dim, out_channel_dim, x,y) -> (batch, out_channel_time, out_channel_dim, x,y)
+        return torch.einsum("bipxy,ijpqxy->bjqxy", input, weights)
+
+
+    def forward(self, x):
+        batchsize = x.shape[0]
+        #Compute Fourier coeffcients up to factor of e^(- something constant)
+        x_ft = torch.fft.rfft2(x)
+
+        # Multiply relevant Fourier modes
+        out_ft = torch.zeros(batchsize, self.out_channels_time, self.out_channels_dim,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
+
+        out_ft[:, :, :, :self.modes1, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, :, :self.modes1, :self.modes2], self.weights1)
+        out_ft[:, :, :, -self.modes1:, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, :, -self.modes1:, :self.modes2], self.weights2)
+
+        #Return to physical space
+        x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
+        return x
+
 # %%
 
-class FNO2d_Conv3d(nn.Module):
+class FNO2d_Multi(nn.Module):
     def __init__(self, modes1, modes2, width):
-        super(FNO2d_Conv3d, self).__init__()
+        super(FNO2d_Multi, self).__init__()
 
         """
         The overall network. It contains 4 layers of the Fourier layer.
@@ -424,93 +427,121 @@ class FNO2d_Conv3d(nn.Module):
             W defined by self.w; K defined by self.conv .
         3. Project from the channel space to the output space by self.fc1 and self.fc2 .
         
-        input: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
-        input shape: (batchsize, x=64, y=64, c=12)
+        input: the solution of the previous T_in timesteps + 2 locations (u(t-T_in, x, y), ..., u(t-1, x, y),  x, y)
+        input shape: (batchsize, x=x_discretistion, y=y_discretisation, c=T_in)
         output: the solution of the next timestep
-        output shape: (batchsize, x=64, y=64, c=1)
+        output shape: (batchsize, x=x_discretisation, y=y_discretisatiob, c=step)
         """
 
         self.modes1 = modes1
         self.modes2 = modes2
         self.width = width
-        self.padding = 8 # pad the domain if input is non-periodic
+        self.fc0 = nn.Linear(T_in+2, self.width)
+        # input channel is 12: the solution of the previous T_in timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
 
-        self.p = nn.Linear(T_in+2, self.width) # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
-        self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv3 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.mlp0 = MLP(self.width, self.width, self.width)
-        self.mlp1 = MLP(self.width, self.width, self.width)
-        self.mlp2 = MLP(self.width, self.width, self.width)
-        self.mlp3 = MLP(self.width, self.width, self.width)
-        self.w0 = nn.Conv2d(self.width, self.width, 1)
-        self.w1 = nn.Conv2d(self.width, self.width, 1)
-        self.w2 = nn.Conv2d(self.width, self.width, 1)
-        self.w3 = nn.Conv2d(self.width, self.width, 1)
-        self.C0 = nn.Conv3d(self.width, self.width, 1)
-        self.C1 = nn.Conv3d(self.width, self.width, 1)
-        self.C2 = nn.Conv3d(self.width, self.width, 1)
-        self.C3 = nn.Conv3d(self.width, self.width, 1)
-        self.norm = nn.InstanceNorm2d(self.width)
-        self.q = MLP(self.width, step, self.width * 4) # output channel is 1: u(x, y)
+        self.conv0 = SpectralConv2d(self.width, self.width, num_vars, num_vars, self.modes1, self.modes2)
+        self.conv1 = SpectralConv2d(self.width, self.width, num_vars, num_vars, self.modes1, self.modes2)
+        self.conv2 = SpectralConv2d(self.width, self.width, num_vars, num_vars, self.modes1, self.modes2)
+        self.conv3 = SpectralConv2d(self.width, self.width, num_vars, num_vars, self.modes1, self.modes2)
+        self.conv4 = SpectralConv2d(self.width, self.width, num_vars, num_vars, self.modes1, self.modes2)
+        self.conv5 = SpectralConv2d(self.width, self.width, num_vars, num_vars, self.modes1, self.modes2)
+        
+        # self.mlp0 = MLP(self.width, self.width, self.width)
+        # self.mlp1 = MLP(self.width, self.width, self.width)
+        # self.mlp2 = MLP(self.width, self.width, self.width)
+        # self.mlp3 = MLP(self.width, self.width, self.width)
+        # self.mlp4 = MLP(self.width, self.width, self.width)
+        # self.mlp5 = MLP(self.width, self.width, self.width)
+
+        self.w0 = nn.Conv3d(self.width, self.width, 1)
+        self.w1 = nn.Conv3d(self.width, self.width, 1)
+        self.w2 = nn.Conv3d(self.width, self.width, 1)
+        self.w3 = nn.Conv3d(self.width, self.width, 1)
+        self.w4 = nn.Conv3d(self.width, self.width, 1)
+        self.w5 = nn.Conv3d(self.width, self.width, 1)
+
+        # self.C0 = nn.Conv3d(self.width, self.width, 1)
+        # self.C1 = nn.Conv3d(self.width, self.width, 1)
+        # self.C2 = nn.Conv3d(self.width, self.width, 1)
+        # self.C3 = nn.Conv3d(self.width, self.width, 1)
+        # self.C4 = nn.Conv3d(self.width, self.width, 1)
+        # self.C5 = nn.Conv3d(self.width, self.width, 1)
+
+        # self.norm = nn.InstanceNorm2d(self.width)
+        self.norm = nn.Identity()
+
+        self.fc1 = nn.Linear(self.width, 128)
+        self.fc2 = nn.Linear(128, step)
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
-        x = self.p(x)
+
+        x = self.fc0(x)
         x = x.permute(0, 4, 1, 2, 3)
-        print(x.shape)
-        # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
         x1 = self.norm(self.conv0(self.norm(x)))
-        x1 = self.mlp0(x1)
+        # x1 = self.mlp0(x1)
         x2 = self.w0(x)
-        x3 = self.C0()
-        x = x1 + x2
+        # x3 = self.C0(x)
+        x = x1+x2
         x = F.gelu(x)
 
         x1 = self.norm(self.conv1(self.norm(x)))
-        x1 = self.mlp1(x1)
+        # x1 = self.mlp1(x1)    
         x2 = self.w1(x)
-        x = x1 + x2
+        # x3 = self.C1(x)
+        x = x1+x2
         x = F.gelu(x)
 
         x1 = self.norm(self.conv2(self.norm(x)))
-        x1 = self.mlp2(x1)
+        # x1 = self.mlp2(x1)
         x2 = self.w2(x)
-        x = x1 + x2
+        # x3 = self.C2(x)
+        x = x1+x2
         x = F.gelu(x)
 
         x1 = self.norm(self.conv3(self.norm(x)))
-        x1 = self.mlp3(x1)
+        # x1 = self.mlp3(x1)
         x2 = self.w3(x)
-        x = x1 + x2
+        # x3 = self.C3(x)
+        x = x1+x2
 
-        # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
-        x = self.q(x)
-        x = x.permute(0, 2, 3, 1)
+        x1 = self.norm(self.conv4(self.norm(x)))
+        # x1 = self.mlp4(x1)
+        x2 = self.w4(x)
+        # x3 = self.C4(x)
+        x = x1+x2
+
+        x1 = self.norm(self.conv5(self.norm(x)))
+        # x1 = self.mlp5(x1)
+        x2 = self.w5(x)
+        # x3 = self.C5(x)
+        x = x1+x2
+
+        x = x.permute(0, 2, 3, 4, 1)
+        x = self.fc1(x)
+        x = F.gelu(x)
+        x = self.fc2(x)
         return x
-
-#Arbitrary grid discretisation 
-    # def get_grid(self, shape, device):
-    #     batchsize, size_x, size_y = shape[0], shape[1], shape[2]
-    #     gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
-        # gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
-    #     gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
-        # gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
-    #     return torch.cat((gridx, gridy), dim=-1).to(device)
-
 
 #Using x and y values from the simulation discretisation 
     def get_grid(self, shape, device):
-        batchsize, size_x, size_y = shape[0], shape[2], shape[3]
+        batchsize, num_vars, size_x, size_y = shape[0], shape[1], shape[2], shape[3]
         gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
         gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
         gridy = torch.tensor(y_grid, dtype=torch.float)
         gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1).to(device)
 
+## Arbitrary grid discretisation 
+    # def get_grid(self, shape, device):
+    #     batchsize, size_x, size_y = shape[0], shape[1], shape[2]
+    #     gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
+    #     gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+    #     gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
+    #     gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+    #     return torch.cat((gridx, gridy), dim=-1).to(device)
 
     def count_params(self):
         c = 0
@@ -619,8 +650,7 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 
-if configuration['Model'] == 'Conv3d':
-    model = FNO2d_Conv3d(modes, modes, width)
+model = FNO2d_Multi(modes, modes, width)
 # model = model.double()
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)

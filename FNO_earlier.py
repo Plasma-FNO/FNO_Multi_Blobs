@@ -297,9 +297,9 @@ class MLP(nn.Module):
 # fourier layer
 ################################################################
 
-class SpectralConv2d_fast(nn.Module):
+class SpectralConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2):
-        super(SpectralConv2d_fast, self).__init__()
+        super(SpectralConv2d, self).__init__()
 
         """
         2D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
@@ -350,24 +350,24 @@ class FNO2d(nn.Module):
             W defined by self.w; K defined by self.conv .
         3. Project from the channel space to the output space by self.fc1 and self.fc2 .
         
-        input: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
-        input shape: (batchsize, x=64, y=64, c=12)
+        input: the solution of the previous T_in timesteps + 2 locations (u(t-T_in, x, y), ..., u(t-1, x, y),  x, y)
+        input shape: (batchsize, x=x_discretistion, y=y_discretisation, c=T_in)
         output: the solution of the next timestep
-        output shape: (batchsize, x=64, y=64, c=1)
+        output shape: (batchsize, x=x_discretisation, y=y_discretisatiob, c=step)
         """
 
         self.modes1 = modes1
         self.modes2 = modes2
         self.width = width
         self.fc0 = nn.Linear(T_in+2, self.width)
-        # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
+        # input channel is 12: the solution of the previous T_in timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
 
-        self.conv0 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv1 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv2 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv4 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv5 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.conv3 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.conv4 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.conv5 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         
         # self.mlp0 = MLP(self.width, self.width, self.width)
         # self.mlp1 = MLP(self.width, self.width, self.width)
