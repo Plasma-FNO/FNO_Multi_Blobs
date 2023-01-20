@@ -11,9 +11,9 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 # %%
 configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
-                 "Model": 'Conv3d',
+                 "Model": 'Vanilla',
                  "Type": '2D Time',
-                 "Epochs": 5,
+                 "Epochs": 500,
                  "Batch Size": 20,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
@@ -21,8 +21,9 @@ configuration = {"Case": 'Multi-Blobs',
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
-                 "Instance Norm": 'Yes',
+                 "Instance Norm": 'No',
                  "Log Normalisation":  'No',
+                 "Physics Normalisation": 'Yes',
                  "T_in": 30,    
                  "T_out": 70,
                  "Step": 10,
@@ -563,9 +564,9 @@ data = data_loc + '/Data/MHD_multi_blobs.npz'
 field = configuration['Field']
 num_vars = configuration['Variables']
 
-u_sol = np.load(data)['rho'].astype(np.float32)  / 1e19
-v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e3
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e5
+u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
+v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
 
 u_sol = np.nan_to_num(u_sol)
 v_sol = np.nan_to_num(v_sol)
@@ -926,7 +927,7 @@ pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5
 ax.axes.xaxis.set_ticks([])
 ax.axes.yaxis.set_ticks([])
 fig.colorbar(pcm, pad=0.05)
-plt.title('Density')
+plt.title('Potential')
 
 output_plot_potential = file_loc + '/Plots/MultiBlobs_'  + run.name +  '_Potential' + '.png'
 plt.savefig(output_plot_potential)
@@ -990,7 +991,7 @@ pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5
 ax.axes.xaxis.set_ticks([])
 ax.axes.yaxis.set_ticks([])
 fig.colorbar(pcm, pad=0.05)
-plt.title('Density')
+plt.title('Temp')
 
 output_plot_temp = file_loc + '/Plots/MultiBlobs_'  + run.name +  '_Temp' + '.png'
 plt.savefig(output_plot_temp)
@@ -999,7 +1000,7 @@ plt.savefig(output_plot_temp)
 
 CODE = ['FNO.py']
 INPUTS = []
-OUTPUTS = [model_loc, output_plot]
+OUTPUTS = [model_loc, output_plot_density, output_plot_potential, output_plot_temp]
 
 # Save code files
 for code_file in CODE:

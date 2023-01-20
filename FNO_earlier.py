@@ -7,7 +7,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'rho',
+                 "Field": 'Phi',
                  "Type": '2D Time',
                  "Epochs": 500,
                  "Batch Size": 20,
@@ -22,7 +22,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Physics Normalisation": 'No',
                  "T_in": 30,    
                  "T_out": 70,
-                 "Step": 10,
+                 "Step": 1,
                  "Modes":16,
                  "Width": 32,
                  "Variables":1, 
@@ -587,6 +587,7 @@ for ep in tqdm(range(epochs)):
             y = yy[..., t:t + step]
             im = model(xx)
             loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
             if t == 0:
                 pred = im
