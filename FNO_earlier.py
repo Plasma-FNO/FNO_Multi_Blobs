@@ -7,7 +7,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'Phi',
+                 "Field": 'rho',
                  "Type": '2D Time',
                  "Epochs": 500,
                  "Batch Size": 20,
@@ -17,7 +17,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
-                 "Instance Norm": 'No',
+                 "Instance Norm": 'Yes',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'No',
                  "T_in": 30,    
@@ -383,7 +383,7 @@ class FNO2d(nn.Module):
         self.w4 = nn.Conv2d(self.width, self.width, 1)
         self.w5 = nn.Conv2d(self.width, self.width, 1)
 
-        # self.norm = nn.InstanceNorm2d(self.width)
+        self.norm = nn.InstanceNorm2d(self.width)
         # self.norm = nn.Identity()
 
         self.fc1 = nn.Linear(self.width, 128)
@@ -396,35 +396,35 @@ class FNO2d(nn.Module):
         x = self.fc0(x)
         x = x.permute(0, 3, 1, 2)
 
-        x1 = self.conv0(x)
+        x1 = self.norm(self.conv0(self.norm(x)))
         # x1 = self.mlp0(x1)
         x2 = self.w0(x)
         x = x1+x2
         x = F.gelu(x)
 
-        x1 = self.conv1(x)
+        x1 = self.norm(self.conv1(self.norm(x)))
         # x1 = self.mlp1(x1)    
         x2 = self.w1(x)
         x = x1+x2
         x = F.gelu(x)
 
-        x1 = self.conv2(x)
+        x1 = self.norm(self.conv2(self.norm(x)))
         # x1 = self.mlp2(x1)
         x2 = self.w2(x)
         x = x1+x2
         x = F.gelu(x)
 
-        x1 = self.conv3(x)
+        x1 = self.norm(self.conv3(self.norm(x)))
         # x1 = self.mlp3(x1)
         x2 = self.w3(x)
         x = x1+x2
 
-        x1 = self.conv4(x)
+        x1 = self.norm(self.conv4(self.norm(x)))
         # x1 = self.mlp4(x1)
         x2 = self.w4(x)
         x = x1+x2
 
-        x1 = self.conv5(x)
+        x1 = self.norm(self.conv5(self.norm(x)))
         # x1 = self.mlp5(x1)
         x2 = self.w5(x)
         x = x1+x2
