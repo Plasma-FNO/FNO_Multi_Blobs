@@ -25,8 +25,8 @@ configuration = {"Case": 'Multi-Blobs',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'Yes',
                  "T_in": 30,    
-                 "T_out": 70,
-                 "Step": 10,
+                 "T_out": 30,
+                 "Step": 1,
                  "Modes":16,
                  "Width": 32,
                  "Variables":3, 
@@ -36,7 +36,7 @@ configuration = {"Case": 'Multi-Blobs',
 # %% 
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'FNO'], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable'], metadata=configuration)
 
 
 # %%
@@ -998,7 +998,7 @@ plt.savefig(output_plot_temp)
 
 # %%
 
-CODE = ['FNO.py']
+CODE = ['FNO_Multiple.py']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot_density, output_plot_potential, output_plot_temp]
 

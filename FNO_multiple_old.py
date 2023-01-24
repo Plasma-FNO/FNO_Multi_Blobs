@@ -7,9 +7,9 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'Phi',
+                 "Field": 'rho, Phi, T',
                  "Type": '2D Time',
-                 "Epochs": 500,
+                 "Epochs": 1,
                  "Batch Size": 20,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
@@ -25,14 +25,14 @@ configuration = {"Case": 'Multi-Blobs',
                  "Step": 1,
                  "Modes":16,
                  "Width": 32,
-                 "Variables":1, 
+                 "Variables":3, 
                  "Noise":0.0, 
                  }
 
 # %% 
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable'], metadata=configuration)
 
 
 # %%
@@ -176,33 +176,79 @@ class RangeNormalizer(object):
 class MinMax_Normalizer(object):
     def __init__(self, x, low=-1.0, high=1.0):
         super(MinMax_Normalizer, self).__init__()
-        mymin = torch.min(x)
-        mymax = torch.max(x)
+        min_u = torch.min(x[:,0,:,:,:])
+        max_u = torch.max(x[:,0,:,:,:])
 
-        self.a = (high - low)/(mymax - mymin)
-        self.b = -self.a*mymax + high
+        self.a_u = (high - low)/(max_u - min_u)
+        self.b_u = -self.a_u*max_u + high
+
+        min_v = torch.min(x[:,1,:,:,:])
+        max_v = torch.max(x[:,1,:,:,:])
+
+        self.a_v = (high - low)/(max_v - min_v)
+        self.b_v = -self.a_v*max_v + high
+
+        min_p = torch.min(x[:,2,:,:,:])
+        max_p = torch.max(x[:,2,:,:,:])
+
+        self.a_p = (high - low)/(max_p - min_p)
+        self.b_p = -self.a_p*max_p + high
+        
 
     def encode(self, x):
         s = x.size()
-        x = x.reshape(s[0], -1)
-        x = self.a*x + self.b
-        x = x.view(s)
+
+        u = x[:,0,:,:,:]
+        u = self.a_u*u + self.b_u
+
+        v = x[:,1,:,:,:]
+        v = self.a_v*v + self.b_v
+
+        p = x[:,2,:,:,:]
+        p = self.a_p*p + self.b_p
+        
+        x = torch.stack((u,v,p), dim=1)
+
         return x
 
     def decode(self, x):
         s = x.size()
-        x = x.reshape(s[0], -1)
-        x = (x - self.b)/self.a
-        x = x.view(s)
+
+        u = x[:,0,:,:,:]
+        u = (u - self.b_u)/self.a_u
+        
+        v = x[:,1,:,:,:]
+        v = (v - self.b_v)/self.a_v
+
+        p = x[:,2,:,:,:]
+        p = (p - self.b_p)/self.a_p
+
+
+        x = torch.stack((u,v,p), dim=1)
+
         return x
 
     def cuda(self):
-        self.a = self.a.cuda()
-        self.b = self.b.cuda()
+        self.a_u = self.a_u.cuda()
+        self.b_u = self.b_u.cuda()
+        
+        self.a_v = self.a_v.cuda()
+        self.b_v = self.b_v.cuda() 
+
+        self.a_p = self.a_p.cuda()
+        self.b_p = self.b_p.cuda()
+
 
     def cpu(self):
-        self.a = self.a.cpu()
-        self.b = self.b.cpu()
+        self.a_u = self.a_u.cpu()
+        self.b_u = self.b_u.cpu()
+        
+        self.a_v = self.a_v.cpu()
+        self.b_v = self.b_v.cpu()
+
+        self.a_p = self.a_p.cpu()
+        self.b_p = self.b_p.cpu()
+
 
 
 # %%
@@ -296,7 +342,6 @@ class MLP(nn.Module):
 ################################################################
 # fourier layer
 ################################################################
-
 class SpectralConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2):
         super(SpectralConv2d, self).__init__()
@@ -311,15 +356,13 @@ class SpectralConv2d(nn.Module):
         self.modes2 = modes2
 
         self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
 
     # Complex multiplication
     def compl_mul2d(self, input, weights):
         # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
-        return torch.einsum("bixy,ioxy->boxy", input, weights)
-        # return torch.einsum("bitxy, itopxy->bopxy", input, weights)
-
+        return torch.einsum("bivxy,iovxy->bovxy", input, weights)
 
     def forward(self, x):
         batchsize = x.shape[0]
@@ -327,11 +370,11 @@ class SpectralConv2d(nn.Module):
         x_ft = torch.fft.rfft2(x)
 
         # Multiply relevant Fourier modes
-        out_ft = torch.zeros(batchsize, self.out_channels,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
-        out_ft[:, :, :self.modes1, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
-        out_ft[:, :, -self.modes1:, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
+        out_ft = torch.zeros(batchsize, self.out_channels, num_vars,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
+        out_ft[:, :, :, :self.modes1, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, :, :self.modes1, :self.modes2], self.weights1)
+        out_ft[:, :, :, -self.modes1:, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, :, -self.modes1:, :self.modes2], self.weights2)
 
         #Return to physical space
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
@@ -376,12 +419,12 @@ class FNO2d(nn.Module):
         # self.mlp4 = MLP(self.width, self.width, self.width)
         # self.mlp5 = MLP(self.width, self.width, self.width)
 
-        self.w0 = nn.Conv2d(self.width, self.width, 1)
-        self.w1 = nn.Conv2d(self.width, self.width, 1)
-        self.w2 = nn.Conv2d(self.width, self.width, 1)
-        self.w3 = nn.Conv2d(self.width, self.width, 1)
-        self.w4 = nn.Conv2d(self.width, self.width, 1)
-        self.w5 = nn.Conv2d(self.width, self.width, 1)
+        self.w0 = nn.Conv3d(self.width, self.width, 1)
+        self.w1 = nn.Conv3d(self.width, self.width, 1)
+        self.w2 = nn.Conv3d(self.width, self.width, 1)
+        self.w3 = nn.Conv3d(self.width, self.width, 1)
+        self.w4 = nn.Conv3d(self.width, self.width, 1)
+        self.w5 = nn.Conv3d(self.width, self.width, 1)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
@@ -394,42 +437,48 @@ class FNO2d(nn.Module):
         x = torch.cat((x, grid), dim=-1)
 
         x = self.fc0(x)
-        x = x.permute(0, 3, 1, 2)
+        x = x.permute(0, 4, 1, 2, 3)
 
-        x1 = self.norm(self.conv0(self.norm(x)))
-        # x1 = self.mlp0(x1)
+        x1 = torch.zeros(x.shape).to(device)
+        for var in range(num_vars):
+            x1 += self.conv0(x[:, :, var:var+1,:,:]) 
         x2 = self.w0(x)
         x = x1+x2
         x = F.gelu(x)
 
-        x1 = self.norm(self.conv1(self.norm(x)))
-        # x1 = self.mlp1(x1)    
+        x1 = torch.zeros(x.shape).to(device)
+        for var in range(num_vars):
+            x1 += self.conv1(x[:, :, var:var+1,:,:])  
         x2 = self.w1(x)
         x = x1+x2
         x = F.gelu(x)
 
-        x1 = self.norm(self.conv2(self.norm(x)))
-        # x1 = self.mlp2(x1)
+        x1 = torch.zeros(x.shape).to(device)
+        for var in range(num_vars):
+            x1 += self.conv2(x[:, :, var:var+1,:,:])  
         x2 = self.w2(x)
         x = x1+x2
         x = F.gelu(x)
 
-        x1 = self.norm(self.conv3(self.norm(x)))
-        # x1 = self.mlp3(x1)
+        x1 = torch.zeros(x.shape).to(device)
+        for var in range(num_vars):
+            x1 += self.conv3(x[:, :, var:var+1,:,:])   
         x2 = self.w3(x)
         x = x1+x2
 
-        x1 = self.norm(self.conv4(self.norm(x)))
-        # x1 = self.mlp4(x1)
+        x1 = torch.zeros(x.shape).to(device)
+        for var in range(num_vars):
+            x1 += self.conv4(x[:, :, var:var+1,:,:])   
         x2 = self.w4(x)
         x = x1+x2
 
-        x1 = self.norm(self.conv5(self.norm(x)))
-        # x1 = self.mlp5(x1)
+        x1 = torch.zeros(x.shape).to(device)
+        for var in range(num_vars):
+            x1 += self.conv5(x[:, :, var:var+1,:,:])  
         x2 = self.w5(x)
         x = x1+x2
 
-        x = x.permute(0, 2, 3, 1)
+        x = x.permute(0, 2, 3, 4, 1)
         x = self.fc1(x)
         x = F.gelu(x)
         x = self.fc2(x)
@@ -437,11 +486,11 @@ class FNO2d(nn.Module):
 
 #Using x and y values from the simulation discretisation 
     def get_grid(self, shape, device):
-        batchsize, size_x, size_y = shape[0], shape[1], shape[2]
+        batchsize, num_vars, size_x, size_y = shape[0], shape[1], shape[2], shape[3]
         gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
-        gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+        gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
         gridy = torch.tensor(y_grid, dtype=torch.float)
-        gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+        gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1).to(device)
 
 ## Arbitrary grid discretisation 
@@ -452,6 +501,7 @@ class FNO2d(nn.Module):
     #     gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
     #     gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
     #     return torch.cat((gridx, gridy), dim=-1).to(device)
+
 
     def count_params(self):
         c = 0
@@ -472,25 +522,39 @@ data = data_loc + '/Data/MHD_multi_blobs.npz'
 
 # %%
 field = configuration['Field']
-if field == 'Phi':
-    u_sol = np.load(data)['Phi'].astype(np.float32)  # / 1e3
-elif field == 'T':
-    u_sol = np.load(data)['T'].astype(np.float32)    # / 1e6
-elif field == 'rho':
-    u_sol = np.load(data)['rho'].astype(np.float32)  # / 1e20
+num_vars = configuration['Variables']
 
-if configuration['Log Normalisation'] == 'Yes':
-    u_sol = np.log(u_sol)
+u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
+v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
 
 u_sol = np.nan_to_num(u_sol)
+v_sol = np.nan_to_num(v_sol)
+p_sol = np.nan_to_num(p_sol)
+
+u = torch.from_numpy(u_sol)
+u = u.permute(0, 2, 3, 1)
+
+v = torch.from_numpy(v_sol)
+v = v.permute(0, 2, 3, 1)
+
+p = torch.from_numpy(p_sol)
+p = p.permute(0, 2, 3, 1)
+
+uvp = torch.stack((u,v,p), dim=1)
+
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
+
 ntrain = 240
 ntest = 20
 S = 106 #Grid Size
+size_x = S
+size_y = S
+
 
 modes = configuration['Modes']
 width = configuration['Width']
@@ -506,15 +570,12 @@ T_in = configuration['T_in']
 T = configuration['T_out']
 step = configuration['Step']
 
-np.random.shuffle(u_sol)
-u = torch.from_numpy(u_sol)
-u = u.permute(0, 2, 3, 1)
 
-train_a = u[:ntrain,:,:,:T_in]
-train_u = u[:ntrain,:,:,T_in:T+T_in]
+train_a = uvp[:ntrain,:,:,:,:T_in]
+train_u = uvp[:ntrain,:,:,:,T_in:T+T_in]
 
-test_a = u[-ntest:,:,:,:T_in]
-test_u = u[-ntest:,:,:,T_in:T+T_in]
+test_a = uvp[-ntest:,:,:,:,:T_in]
+test_u = uvp[-ntest:,:,:,:,T_in:T+T_in]
 
 print(train_u.shape)
 print(test_u.shape)
@@ -770,7 +831,7 @@ plt.savefig(output_plot)
 
 # %%
 
-CODE = ['FNO_earlier.py']
+CODE = ['FNO_mulitple_old.py']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot]
 
