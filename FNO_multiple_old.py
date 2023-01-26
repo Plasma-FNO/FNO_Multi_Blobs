@@ -8,9 +8,10 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 # %%
 configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
+                 "Field_Mixing": 'Conv3D',
                  "Type": '2D Time',
-                 "Epochs": 1,
-                 "Batch Size": 20,
+                 "Epochs": 5,
+                 "Batch Size": 5,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
                  "Scheduler Step": 100,
@@ -20,9 +21,9 @@ configuration = {"Case": 'Multi-Blobs',
                  "Instance Norm": 'No',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'No',
-                 "T_in": 30,    
+                 "T_in": 20,    
                  "T_out": 70,
-                 "Step": 1,
+                 "Step": 5,
                  "Modes":16,
                  "Width": 32,
                  "Variables":3, 
@@ -339,6 +340,76 @@ class MLP(nn.Module):
         x = self.mlp2(x)
         return x
 
+
+class UNet3d(nn.Module):
+
+    def __init__(self, in_channels, out_channels, init_features=64):
+        super(UNet3d, self).__init__()
+
+        features = init_features
+        self.encoder1 = UNet3d._block(in_channels, features, name="enc1")
+        self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
+
+
+        # self.bottleneck = UNet3d._block(features, features * 2, name="bottleneck")
+
+
+        self.upconv1 = nn.ConvTranspose3d(
+            features, features, kernel_size=(2,2,2), stride=2
+        )
+        self.decoder1 = UNet3d._block(features*2, features, name="dec1")
+
+        self.conv = nn.Conv3d(
+            in_channels=features, out_channels=out_channels, kernel_size=1
+        )
+
+    def forward(self, x):
+        enc1 = self.encoder1(x)
+        bottleneck = self.pool1(enc1)
+        dec1 = self.upconv1(bottleneck)
+        dec1 = torch.cat((dec1, enc1), dim=1)
+        dec1 = self.decoder1(dec1)
+        return self.conv(dec1)
+
+    @staticmethod
+    def _block(in_channels, features, name):
+        return nn.Sequential(
+            OrderedDict(
+                [
+                    (
+                        name + "conv1",
+                        nn.Conv3d(
+                            in_channels=in_channels,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            bias=False,
+                        ),
+                    ),
+                    (name + "norm1", nn.BatchNorm3d(num_features=features)),
+                    (name + "tanh1", nn.Tanh()),
+                    # (
+                    #     name + "conv2",
+                    #     nn.Conv3d(
+                    #         in_channels=features,
+                    #         out_channels=features,
+                    #         kernel_size=3,
+                    #         padding=1,
+                    #         bias=False,
+                    #     ),
+                    # ),
+                    # (name + "norm2", nn.BatchNorm3d(num_features=features)),
+                    # (name + "tanh2", nn.Tanh()),
+                ]
+            )
+        )
+    
+    def count_params(self):
+        c = 0
+        for p in self.parameters():
+            c += reduce(operator.mul, list(p.size()))
+
+        return c
 ################################################################
 # fourier layer
 ################################################################
@@ -419,12 +490,27 @@ class FNO2d(nn.Module):
         # self.mlp4 = MLP(self.width, self.width, self.width)
         # self.mlp5 = MLP(self.width, self.width, self.width)
 
-        self.w0 = nn.Conv3d(self.width, self.width, 1)
-        self.w1 = nn.Conv3d(self.width, self.width, 1)
-        self.w2 = nn.Conv3d(self.width, self.width, 1)
-        self.w3 = nn.Conv3d(self.width, self.width, 1)
-        self.w4 = nn.Conv3d(self.width, self.width, 1)
-        self.w5 = nn.Conv3d(self.width, self.width, 1)
+        self.w0 = nn.Conv2d(self.width, self.width, 1)
+        self.w1 = nn.Conv2d(self.width, self.width, 1)
+        self.w2 = nn.Conv2d(self.width, self.width, 1)
+        self.w3 = nn.Conv2d(self.width, self.width, 1)
+        self.w4 = nn.Conv2d(self.width, self.width, 1)
+        self.w5 = nn.Conv2d(self.width, self.width, 1)
+
+        self.c0 = nn.Conv3d(self.width, self.width, 1)
+        self.c1 = nn.Conv3d(self.width, self.width, 1)
+        self.c2 = nn.Conv3d(self.width, self.width, 1)
+        self.c3 = nn.Conv3d(self.width, self.width, 1)
+        self.c4 = nn.Conv3d(self.width, self.width, 1)
+        self.c5 = nn.Conv3d(self.width, self.width, 1)
+
+
+        # self.u0 = UNet3d(self.width, self.width)
+        # self.u1 = UNet3d(self.width, self.width)
+        # self.u2 = UNet3d(self.width, self.width)
+        # self.u3 = UNet3d(self.width, self.width)
+        # self.u4 = UNet3d(self.width, self.width)
+        # self.u5 = UNet3d(self.width, self.width)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
@@ -440,43 +526,56 @@ class FNO2d(nn.Module):
         x = x.permute(0, 4, 1, 2, 3)
 
         x1 = torch.zeros(x.shape).to(device)
+        x2 = torch.zeros(x.shape).to(device)
         for var in range(num_vars):
-            x1 += self.conv0(x[:, :, var:var+1,:,:]) 
-        x2 = self.w0(x)
+            x1 += self.conv0(x[:, :, var:var+1,:,:])
+            x2 += self.w0(x[:, :, var, :, :])
+        x3 = self.c0(x)
+
         x = x1+x2
         x = F.gelu(x)
 
         x1 = torch.zeros(x.shape).to(device)
+        x2 = torch.zeros(x.shape).to(device)
         for var in range(num_vars):
-            x1 += self.conv1(x[:, :, var:var+1,:,:])  
-        x2 = self.w1(x)
-        x = x1+x2
+            x1 += self.conv1(x[:, :, var:var+1,:,:])
+            x2[:, :, var, :, :] = self.w1(x[:, :, var, :, :])
+        x3 = self.c1(x)
+        x = x1+x2+x3
         x = F.gelu(x)
 
         x1 = torch.zeros(x.shape).to(device)
+        x2 = torch.zeros(x.shape).to(device)
         for var in range(num_vars):
-            x1 += self.conv2(x[:, :, var:var+1,:,:])  
-        x2 = self.w2(x)
-        x = x1+x2
+            x1 += self.conv2(x[:, :, var:var+1,:,:])
+            x2[:, :, var, :, :] = self.w2(x[:, :, var, :, :])
+        x3 = self.c2(x)
+        x = x1+x2+x3
         x = F.gelu(x)
 
         x1 = torch.zeros(x.shape).to(device)
+        x2 = torch.zeros(x.shape).to(device)
         for var in range(num_vars):
-            x1 += self.conv3(x[:, :, var:var+1,:,:])   
-        x2 = self.w3(x)
-        x = x1+x2
+            x1 += self.conv3(x[:, :, var:var+1,:,:])
+            x2[:, :, var, :, :] = self.w3(x[:, :, var, :, :])
+        x3 = self.c3(x)
+        x = x1+x2+x3
 
         x1 = torch.zeros(x.shape).to(device)
+        x2 = torch.zeros(x.shape).to(device)
         for var in range(num_vars):
-            x1 += self.conv4(x[:, :, var:var+1,:,:])   
-        x2 = self.w4(x)
-        x = x1+x2
+            x1 += self.conv4(x[:, :, var:var+1,:,:])
+            x2[:, :, var, :, :] = self.w4(x[:, :, var, :, :])
+        x3 = self.c4(x)
+        x = x1+x2+x3
 
         x1 = torch.zeros(x.shape).to(device)
+        x2 = torch.zeros(x.shape).to(device)
         for var in range(num_vars):
-            x1 += self.conv5(x[:, :, var:var+1,:,:])  
-        x2 = self.w5(x)
-        x = x1+x2
+            x1 += self.conv5(x[:, :, var:var+1,:,:])
+            x2[:, :, var, :, :] = self.w5(x[:, :, var, :, :])
+        x3 = self.c5(x)
+        x = x1+x2+x3
 
         x = x.permute(0, 2, 3, 4, 1)
         x = self.fc1(x)
@@ -522,6 +621,7 @@ data = data_loc + '/Data/MHD_multi_blobs.npz'
 
 # %%
 field = configuration['Field']
+dims = ['rho', 'Phi', 'T']
 num_vars = configuration['Variables']
 
 u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
@@ -710,6 +810,7 @@ torch.save(model.state_dict(),  model_loc)
 
 # %%
 #Testing 
+batch_size = 1
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
 pred_set = torch.zeros(test_u.shape)
 index = 0
@@ -765,75 +866,82 @@ if configuration['Log Normalisation'] == 'Yes':
     test_u = torch.exp(test_u)
     pred_set = torch.exp(pred_set)
 
-u_field = test_u[idx]
 
-v_min_1 = torch.min(u_field[:,:,0])
-v_max_1 = torch.max(u_field[:,:,0])
+# %%
+output_plot = []
+for dim in range(num_vars):
+    u_field = test_u[idx]
 
-v_min_2 = torch.min(u_field[:, :, int(T/2)])
-v_max_2 = torch.max(u_field[:, :, int(T/2)])
+    v_min_1 = torch.min(u_field[dim,:,:,0])
+    v_max_1 = torch.max(u_field[dim,:,:,0])
 
-v_min_3 = torch.min(u_field[:, :, -1])
-v_max_3 = torch.max(u_field[:, :, -1])
+    v_min_2 = torch.min(u_field[dim, :, :, int(T/2)])
+    v_max_2 = torch.max(u_field[dim, :, :, int(T/2)])
 
-fig = plt.figure(figsize=plt.figaspect(0.5))
-ax = fig.add_subplot(2,3,1)
-pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-# ax.title.set_text('Initial')
-ax.title.set_text('t='+ str(T_in))
-ax.set_ylabel('Solution')
-fig.colorbar(pcm, pad=0.05)
+    v_min_3 = torch.min(u_field[dim, :, :, -1])
+    v_max_3 = torch.max(u_field[dim, :, :, -1])
 
-
-ax = fig.add_subplot(2,3,2)
-pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-# ax.title.set_text('Middle')
-ax.title.set_text('t='+ str(int((T+T_in)/2)))
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
+    fig = plt.figure(figsize=plt.figaspect(0.5))
+    ax = fig.add_subplot(2,3,1)
+    pcm =ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+    # ax.title.set_text('Initial')
+    ax.title.set_text('t='+ str(T_in))
+    ax.set_ylabel('Solution')
+    fig.colorbar(pcm, pad=0.05)
 
 
-ax = fig.add_subplot(2,3,3)
-pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-# ax.title.set_text('Final')
-ax.title.set_text('t='+str(T+T_in))
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
+    ax = fig.add_subplot(2,3,2)
+    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+    # ax.title.set_text('Middle')
+    ax.title.set_text('t='+ str(int((T+T_in)/2)))
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    fig.colorbar(pcm, pad=0.05)
 
 
-u_field = pred_set[idx]
-
-ax = fig.add_subplot(2,3,4)
-pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-ax.set_ylabel('FNO')
-
-fig.colorbar(pcm, pad=0.05)
-
-ax = fig.add_subplot(2,3,5)
-pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
+    ax = fig.add_subplot(2,3,3)
+    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+    # ax.title.set_text('Final')
+    ax.title.set_text('t='+str(T+T_in))
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    fig.colorbar(pcm, pad=0.05)
 
 
-ax = fig.add_subplot(2,3,6)
-pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
+    u_field = pred_set[idx]
+
+    ax = fig.add_subplot(2,3,4)
+    pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+    ax.set_ylabel('FNO')
+
+    fig.colorbar(pcm, pad=0.05)
+
+    ax = fig.add_subplot(2,3,5)
+    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    fig.colorbar(pcm, pad=0.05)
+
+
+    ax = fig.add_subplot(2,3,6)
+    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    fig.colorbar(pcm, pad=0.05)
+
+    plt.title(dims[dim])
+
+    output_plot.append(file_loc + '/Plots/MultiBlobs_' + dims[dim] + '_' + run.name + '.png')
+    plt.savefig(output_plot[dim])
+
+# %%
 
 
 # %%
-output_plot = file_loc + '/Plots/MultiBlobs_' + configuration['Field'] + '_' + run.name + '.png'
-plt.savefig(output_plot)
 
-# %%
-
-CODE = ['FNO_mulitple_old.py']
+CODE = ['FNO_multiple_old.py']
 INPUTS = []
-OUTPUTS = [model_loc, output_plot]
+OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
 
 # Save code files
 for code_file in CODE:
@@ -865,3 +973,5 @@ for output_file in OUTPUTS:
         print('ERROR: output file %s does not exist' % output_file)
 
 run.close()
+
+# %%

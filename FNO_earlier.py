@@ -22,17 +22,18 @@ configuration = {"Case": 'Multi-Blobs',
                  "Physics Normalisation": 'No',
                  "T_in": 30,    
                  "T_out": 70,
-                 "Step": 1,
+                 "Step": 10,
                  "Modes":16,
                  "Width": 32,
                  "Variables":1, 
                  "Noise":0.0, 
+                 "Loss Function": 'Energy Based'
                  }
 
 # %% 
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs'], metadata=configuration)
 
 
 # %%
@@ -586,8 +587,8 @@ for ep in tqdm(range(epochs)):
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             im = model(xx)
-            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-            # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
+            # loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
             if t == 0:
                 pred = im
@@ -616,7 +617,8 @@ for ep in tqdm(range(epochs)):
             for t in range(0, T, step):
                 y = yy[..., t:t + step]
                 im = model(xx)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                # loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
                 if t == 0:
                     pred = im
@@ -649,6 +651,7 @@ torch.save(model.state_dict(),  model_loc)
 
 # %%
 #Testing 
+batch_size = 1
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
 pred_set = torch.zeros(test_u.shape)
 index = 0
@@ -661,7 +664,8 @@ with torch.no_grad():
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
-            loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            # loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            loss += myloss(out.reshape(batch_size, -1)*torch.log(out.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
             if t == 0:
                 pred = out

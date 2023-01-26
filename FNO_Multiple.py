@@ -748,6 +748,7 @@ torch.save(model.state_dict(),  model_loc)
 
 # %%
 #Testing 
+batch_size = 1
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
 pred_set = torch.zeros(test_u.shape)
 index = 0
