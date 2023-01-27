@@ -10,7 +10,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
                  "Field_Mixing": 'Conv3D',
                  "Type": '2D Time',
-                 "Epochs": 5,
+                 "Epochs": 500,
                  "Batch Size": 5,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
@@ -50,6 +50,7 @@ from matplotlib import cm
 import operator
 from functools import reduce
 from functools import partial
+from collections import OrderedDict
 
 import time 
 from timeit import default_timer
@@ -440,7 +441,7 @@ class SpectralConv2d(nn.Module):
         #Compute Fourier coeffcients up to factor of e^(- something constant)
         x_ft = torch.fft.rfft2(x)
 
-        # Multiply relevant Fourier modes
+        # Multiply relevant Fourier modes 
         out_ft = torch.zeros(batchsize, self.out_channels, num_vars,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
         out_ft[:, :, :, :self.modes1, :self.modes2] = \
             self.compl_mul2d(x_ft[:, :, :, :self.modes1, :self.modes2], self.weights1)
@@ -529,7 +530,7 @@ class FNO2d(nn.Module):
         x2 = torch.zeros(x.shape).to(device)
         for var in range(num_vars):
             x1 += self.conv0(x[:, :, var:var+1,:,:])
-            x2 += self.w0(x[:, :, var, :, :])
+            x2[:, :, var, :, :] = self.w0(x[:, :, var, :, :])
         x3 = self.c0(x)
 
         x = x1+x2
