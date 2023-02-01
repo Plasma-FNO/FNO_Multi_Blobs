@@ -21,9 +21,9 @@ configuration = {"Case": 'Multi-Blobs',
                  "Instance Norm": 'No',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'No',
-                 "T_in": 20,    
+                 "T_in": 30,    
                  "T_out": 70,
-                 "Step": 5,
+                 "Step": 1,
                  "Modes":16,
                  "Width": 32,
                  "Variables":3, 
@@ -366,7 +366,9 @@ class UNet3d(nn.Module):
 
     def forward(self, x):
         enc1 = self.encoder1(x)
+        print(enc1.shape)
         bottleneck = self.pool1(enc1)
+        print(bottleneck.shape)
         dec1 = self.upconv1(bottleneck)
         dec1 = torch.cat((dec1, enc1), dim=1)
         dec1 = self.decoder1(dec1)
@@ -411,6 +413,10 @@ class UNet3d(nn.Module):
             c += reduce(operator.mul, list(p.size()))
 
         return c
+
+# unet = UNet3d(32, 32)
+# unet(torch.ones(5, 32, 3, 106, 106))
+# %%
 ################################################################
 # fourier layer
 ################################################################
@@ -491,27 +497,26 @@ class FNO2d(nn.Module):
         # self.mlp4 = MLP(self.width, self.width, self.width)
         # self.mlp5 = MLP(self.width, self.width, self.width)
 
-        self.w0 = nn.Conv2d(self.width, self.width, 1)
-        self.w1 = nn.Conv2d(self.width, self.width, 1)
-        self.w2 = nn.Conv2d(self.width, self.width, 1)
-        self.w3 = nn.Conv2d(self.width, self.width, 1)
-        self.w4 = nn.Conv2d(self.width, self.width, 1)
-        self.w5 = nn.Conv2d(self.width, self.width, 1)
+        self.w0 = nn.Conv3d(self.width, self.width, 1)
+        self.w1 = nn.Conv3d(self.width, self.width, 1)
+        self.w2 = nn.Conv3d(self.width, self.width, 1)
+        self.w3 = nn.Conv3d(self.width, self.width, 1)
+        self.w4 = nn.Conv3d(self.width, self.width, 1)
+        self.w5 = nn.Conv3d(self.width, self.width, 1)
 
-        self.c0 = nn.Conv3d(self.width, self.width, 1)
-        self.c1 = nn.Conv3d(self.width, self.width, 1)
-        self.c2 = nn.Conv3d(self.width, self.width, 1)
-        self.c3 = nn.Conv3d(self.width, self.width, 1)
-        self.c4 = nn.Conv3d(self.width, self.width, 1)
-        self.c5 = nn.Conv3d(self.width, self.width, 1)
+        # self.c0 = nn.Conv3d(self.width, self.width, 1)
+        # self.c1 = nn.Conv3d(self.width, self.width, 1)
+        # self.c2 = nn.Conv3d(self.width, self.width, 1)
+        # self.c3 = nn.Conv3d(self.width, self.width, 1)
+        # self.c4 = nn.Conv3d(self.width, self.width, 1)
+        # self.c5 = nn.Conv3d(self.width, self.width, 1)
 
-
-        # self.u0 = UNet3d(self.width, self.width)
-        # self.u1 = UNet3d(self.width, self.width)
-        # self.u2 = UNet3d(self.width, self.width)
-        # self.u3 = UNet3d(self.width, self.width)
-        # self.u4 = UNet3d(self.width, self.width)
-        # self.u5 = UNet3d(self.width, self.width)
+        # self.c0 = UNet3d(self.width, self.width)
+        # self.c1 = UNet3d(self.width, self.width)
+        # self.c2 = UNet3d(self.width, self.width)
+        # self.c3 = UNet3d(self.width, self.width)
+        # self.c4 = UNet3d(self.width, self.width)
+        # self.c5 = UNet3d(self.width, self.width)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
@@ -526,57 +531,40 @@ class FNO2d(nn.Module):
         x = self.fc0(x)
         x = x.permute(0, 4, 1, 2, 3)
 
-        x1 = torch.zeros(x.shape).to(device)
-        x2 = torch.zeros(x.shape).to(device)
-        for var in range(num_vars):
-            x1 += self.conv0(x[:, :, var:var+1,:,:])
-            x2[:, :, var, :, :] = self.w0(x[:, :, var, :, :])
-        x3 = self.c0(x)
 
+        x1 = self.conv0(x)
+        x2 = self.w0(x)
+        print(x.shape)
+        # x3 = self.c0(x)
         x = x1+x2
         x = F.gelu(x)
 
-        x1 = torch.zeros(x.shape).to(device)
-        x2 = torch.zeros(x.shape).to(device)
-        for var in range(num_vars):
-            x1 += self.conv1(x[:, :, var:var+1,:,:])
-            x2[:, :, var, :, :] = self.w1(x[:, :, var, :, :])
-        x3 = self.c1(x)
-        x = x1+x2+x3
+        x1 = self.conv1(x)
+        x2 = self.w1(x)
+        # x3 = self.c1(x)
+        x = x1+x2
         x = F.gelu(x)
 
-        x1 = torch.zeros(x.shape).to(device)
-        x2 = torch.zeros(x.shape).to(device)
-        for var in range(num_vars):
-            x1 += self.conv2(x[:, :, var:var+1,:,:])
-            x2[:, :, var, :, :] = self.w2(x[:, :, var, :, :])
-        x3 = self.c2(x)
-        x = x1+x2+x3
+        x1 = self.conv2(x)
+        x2 = self.w2(x)
+        # x3 = self.c2(x)
+        x = x1+x2
         x = F.gelu(x)
 
-        x1 = torch.zeros(x.shape).to(device)
-        x2 = torch.zeros(x.shape).to(device)
-        for var in range(num_vars):
-            x1 += self.conv3(x[:, :, var:var+1,:,:])
-            x2[:, :, var, :, :] = self.w3(x[:, :, var, :, :])
-        x3 = self.c3(x)
-        x = x1+x2+x3
+        x1 = self.conv3(x)
+        x2 = self.w3(x)
+        # x3 = self.c3(x)
+        x = x1+x2
 
-        x1 = torch.zeros(x.shape).to(device)
-        x2 = torch.zeros(x.shape).to(device)
-        for var in range(num_vars):
-            x1 += self.conv4(x[:, :, var:var+1,:,:])
-            x2[:, :, var, :, :] = self.w4(x[:, :, var, :, :])
-        x3 = self.c4(x)
-        x = x1+x2+x3
+        x1 = self.conv4(x)
+        x2 = self.w4(x)
+        # x3 = self.c4(x)
+        x = x1 + x2 
 
-        x1 = torch.zeros(x.shape).to(device)
-        x2 = torch.zeros(x.shape).to(device)
-        for var in range(num_vars):
-            x1 += self.conv5(x[:, :, var:var+1,:,:])
-            x2[:, :, var, :, :] = self.w5(x[:, :, var, :, :])
-        x3 = self.c5(x)
-        x = x1+x2+x3
+        x1 = self.conv5(x)
+        x2 = self.w5(x)
+        # x3 = self.c5(x)
+        x = x1 + x2
 
         x = x.permute(0, 2, 3, 4, 1)
         x = self.fc1(x)

@@ -3,11 +3,11 @@
 """
 Created on 6 Jan 2023
 @author: vgopakum
-FNO modelled over the MHD data built using JOREK for multi-blob diffusion. 
+FNO modelled over the MHD data built using JOREK for multi-blob diffusion. Tetsing UQ with dropout
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'T',
+                 "Field": 'Phi',
                  "Type": '2D Time',
                  "Epochs": 500,
                  "Batch Size": 20,
@@ -22,18 +22,20 @@ configuration = {"Case": 'Multi-Blobs',
                  "Physics Normalisation": 'No',
                  "T_in": 30,    
                  "T_out": 70,
-                 "Step": 1,
+                 "Step": 10,
                  "Modes":16,
                  "Width": 32,
                  "Variables":1, 
                  "Noise":0.0, 
-                 "Loss Function": 'LP Loss'
+                 "Loss Function": 'LP Loss',
+                 "UQ": 'Dropout',
+                 "Dropout Rate": 0.9
                  }
 
 # %% 
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs'], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'UQ'], metadata=configuration)
 
 
 # %%
@@ -384,6 +386,8 @@ class FNO2d(nn.Module):
         self.w4 = nn.Conv2d(self.width, self.width, 1)
         self.w5 = nn.Conv2d(self.width, self.width, 1)
 
+        self.dropout = nn.Dropout(p=0.1)
+
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
 
@@ -401,34 +405,40 @@ class FNO2d(nn.Module):
         # x1 = self.mlp0(x1)
         x2 = self.w0(x)
         x = x1+x2
+        x = self.dropout(x)
         x = F.gelu(x)
 
         x1 = self.norm(self.conv1(self.norm(x)))
         # x1 = self.mlp1(x1)    
         x2 = self.w1(x)
         x = x1+x2
+        x = self.dropout(x)
         x = F.gelu(x)
 
         x1 = self.norm(self.conv2(self.norm(x)))
         # x1 = self.mlp2(x1)
         x2 = self.w2(x)
         x = x1+x2
+        x = self.dropout(x)
         x = F.gelu(x)
 
         x1 = self.norm(self.conv3(self.norm(x)))
         # x1 = self.mlp3(x1)
         x2 = self.w3(x)
         x = x1+x2
+        x = self.dropout(x)
 
         x1 = self.norm(self.conv4(self.norm(x)))
         # x1 = self.mlp4(x1)
         x2 = self.w4(x)
         x = x1+x2
+        x = self.dropout(x)
 
         x1 = self.norm(self.conv5(self.norm(x)))
         # x1 = self.mlp5(x1)
         x2 = self.w5(x)
         x = x1+x2
+        x = self.dropout(x)
 
         x = x.permute(0, 2, 3, 1)
         x = self.fc1(x)
@@ -774,7 +784,7 @@ plt.savefig(output_plot)
 
 # %%
 
-CODE = ['FNO_earlier.py']
+CODE = ['FNO_dropout']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot]
 
@@ -808,3 +818,24 @@ for output_file in OUTPUTS:
         print('ERROR: output file %s does not exist' % output_file)
 
 run.close()
+
+
+# %%
+#Visualising the results. 
+
+model = FNO2d(modes, modes, width)
+model.load_state_dict(torch.load(path + '/Models/FNO_multi_blobs_grouchy-expense.pth', map_location='cpu'))
+
+# %%
+idx = 6
+model.eval()
+xx = test_a[idx:idx+1]
+
+preds = []
+for i in range(10):
+        preds.append(model(xx).detach().numpy())
+
+# %%
+preds_mean = np.mean(preds, axis=0)
+preds_std = np.std(preds, axis=0)
+# %%

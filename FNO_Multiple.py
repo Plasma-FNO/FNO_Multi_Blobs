@@ -438,6 +438,7 @@ class FNO2d_Multi(nn.Module):
         self.modes2 = modes2
         self.width = width
         self.fc0 = nn.Linear(T_in+2, self.width)
+        self.fc_d0 = nn.Linear(num_vars, self.width)
         # input channel is 12: the solution of the previous T_in timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
 
         self.conv0 = SpectralConv2d(self.width, self.width, num_vars, num_vars, self.modes1, self.modes2)
@@ -473,6 +474,10 @@ class FNO2d_Multi(nn.Module):
 
         self.fc1 = nn.Linear(self.width, 128)
         self.fc2 = nn.Linear(128, step)
+        
+        self.fc_d1 = nn.Linear(self.width, 128)
+        self.fc_d2 = nn.Linear(128, num_vars)
+
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
