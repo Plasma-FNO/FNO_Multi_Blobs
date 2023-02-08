@@ -830,12 +830,157 @@ model.load_state_dict(torch.load(path + '/Models/FNO_multi_blobs_grouchy-expense
 idx = 6
 model.eval()
 xx = test_a[idx:idx+1]
-
+yy = test_u_encoded[idx:idx+1,:, :, :10]
 preds = []
-for i in range(10):
+for i in tqdm(range(1000)):
         preds.append(model(xx).detach().numpy())
 
 # %%
 preds_mean = np.mean(preds, axis=0)
 preds_std = np.std(preds, axis=0)
 # %%
+
+T = step
+
+u_field = yy[0]
+
+v_min_1 = torch.min(u_field[:,:,0])
+v_max_1 = torch.max(u_field[:,:,0])
+
+v_min_2 = torch.min(u_field[:, :, int(T/2)])
+v_max_2 = torch.max(u_field[:, :, int(T/2)])
+
+v_min_3 = torch.min(u_field[:, :, -1])
+v_max_3 = torch.max(u_field[:, :, -1])
+
+fig = plt.figure(figsize=plt.figaspect(0.9))
+ax = fig.add_subplot(3,3,1)
+pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# ax.title.set_text('Initial')
+ax.title.set_text('t='+ str(T_in))
+ax.set_ylabel('Solution')
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(3,3,2)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# ax.title.set_text('Middle')
+ax.title.set_text('t='+ str(int((T/2+T_in))))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(3,3,3)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# ax.title.set_text('Final')
+ax.title.set_text('t='+str(T+T_in))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+u_field = preds_mean[0]
+
+ax = fig.add_subplot(3,3,4)
+pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+ax.set_ylabel('FNO')
+
+fig.colorbar(pcm, pad=0.05)
+
+ax = fig.add_subplot(3,3,5)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(3,3,6)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+u_field = preds_std[0]
+
+v_min_1 = np.min(u_field[:,:,0])
+v_max_1 = np.max(u_field[:,:,0])
+
+v_min_2 = np.min(u_field[:, :, int(T/2)])
+v_max_2 = np.max(u_field[:, :, int(T/2)])
+
+v_min_3 = np.min(u_field[:, :, -1])
+v_max_3 = np.max(u_field[:, :, -1])
+
+ax = fig.add_subplot(3,3,7)
+pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# ax.title.set_text('Initial')
+# ax.title.set_text('t='+ str(T_in))
+
+ax.set_ylabel('std dev')
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(3,3,8)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# ax.title.set_text('Middle')
+# ax.title.set_text('t='+ str(int((T/2+T_in))))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(3,3,9)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# ax.title.set_text('Final')
+# ax.title.set_text('t='+str(T+T_in))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+# %%
+
+
+
+# u_field = preds_std[0]
+
+# v_min_1 = np.min(u_field[:,:,0])
+# v_max_1 = np.max(u_field[:,:,0])
+
+# v_min_2 = np.min(u_field[:, :, int(T/2)])
+# v_max_2 = np.max(u_field[:, :, int(T/2)])
+
+# v_min_3 = np.min(u_field[:, :, -1])
+# v_max_3 = np.max(u_field[:, :, -1])
+
+# fig = plt.figure(figsize=plt.figaspect(0.7))
+# ax = fig.add_subplot(1,3,1)
+# pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# # ax.title.set_text('Initial')
+# ax.title.set_text('t='+ str(T_in))
+# ax.set_ylabel('STD')
+# fig.colorbar(pcm, pad=0.05)
+
+
+# ax = fig.add_subplot(1,3,2)
+# pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# # ax.title.set_text('Middle')
+# ax.title.set_text('t='+ str(int((T/2+T_in))))
+# ax.axes.xaxis.set_ticks([])
+# ax.axes.yaxis.set_ticks([])
+# fig.colorbar(pcm, pad=0.05)
+
+
+# ax = fig.add_subplot(1,3,3)
+# pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# # ax.title.set_text('Final')
+# ax.title.set_text('t='+str(T+T_in))
+# ax.axes.xaxis.set_ticks([])
+# ax.axes.yaxis.set_ticks([])
+# fig.colorbar(pcm, pad=0.05)
+
+# # %%
