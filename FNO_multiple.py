@@ -8,7 +8,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 # %%
 configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
-                 "Field_Mixing": 'Conv3D',
+                 "Field_Mixing": 'Unet',
                  "Type": '2D Time',
                  "Epochs": 500,
                  "Batch Size": 5,
@@ -18,9 +18,9 @@ configuration = {"Case": 'Multi-Blobs',
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
-                 "Instance Norm": 'No',
+                 "Instance Norm": 'Yes',
                  "Log Normalisation":  'No',
-                 "Physics Normalisation": 'No',
+                 "Physics Normalisation": 'Yes',
                  "T_in": 20,    
                  "T_out": 30,
                  "Step": 5,
@@ -28,6 +28,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Width": 32,
                  "Variables":3, 
                  "Noise":0.0, 
+                 "Loss Function": 'LP Loss'
                  }
 
 # %% 
@@ -519,8 +520,8 @@ class FNO2d(nn.Module):
         self.c4 = UNet3d(self.width, self.width)
         self.c5 = UNet3d(self.width, self.width)
 
-        # self.norm = nn.InstanceNorm2d(self.width)
-        self.norm = nn.Identity()
+        self.norm = nn.InstanceNorm2d(self.width)
+        # self.norm = nn.Identity()
 
         self.fc_d1 = nn.Linear(width_vars, 64)
         self.fc_d2 = nn.Linear(64, num_vars)
@@ -742,6 +743,7 @@ for ep in tqdm(range(epochs)):
     train_l2_step = 0
     train_l2_full = 0
     for xx, yy in train_loader:
+        optimizer.zero_grad()
         loss = 0
         xx = xx.to(device)
         yy = yy.to(device)
@@ -764,7 +766,6 @@ for ep in tqdm(range(epochs)):
         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
         train_l2_full += l2_full.item()
 
-        optimizer.zero_grad()
         loss.backward()
         # l2_full.backward()
         optimizer.step()
@@ -942,7 +943,7 @@ for dim in range(num_vars):
 
 # %%
 
-CODE = ['FNO_multiple_old.py']
+CODE = ['FNO_multiple.py']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
 
