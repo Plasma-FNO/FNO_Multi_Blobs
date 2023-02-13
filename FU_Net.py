@@ -31,12 +31,13 @@ configuration = {"Case": 'Multi-Blobs',
                  "Width_vars": 16,
                  "Variables":3, 
                  "Noise":0.0, 
+                 "Loss Function": 'LP Loss'
                  }
 
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', 'FU-Net'], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', 'FU-Net', "Skip_Connect"], metadata=configuration)
 
 # %% 
 
@@ -548,9 +549,9 @@ class FU_Net(nn.Module):
         x = self.fc0_time(x)
         x = x.permute(0, 4, 1, 2, 3)
 
-        x = self.f0(x)
-        x = self.f1(x)
-        x = self.f2(x)
+        x0 = self.f0(x)
+        x = self.f1(x0)
+        x = self.f2(x) + x0 
 
         x = x.permute(0, 2, 3, 4, 1)
         x = x + x_u
@@ -636,21 +637,12 @@ S = 106 #Grid Size
 size_x = S
 size_y = S
 
-
-modes = configuration['Modes']
-width = configuration['Width']
-width_vars = 16
-output_size = configuration['Step']
-
 batch_size = configuration['Batch Size']
 
 batch_size2 = batch_size
 
 t1 = default_timer()
 
-T_in = configuration['T_in']
-T = configuration['T_out']
-step = configuration['Step']
 
 
 train_a = uvp[:ntrain,:,:,:,:T_in]
@@ -919,7 +911,7 @@ for dim in range(num_vars):
 
 # %%
 
-CODE = ['FNO_multiple.py']
+CODE = ['FU_Net.py']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
 

@@ -18,7 +18,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
-                 "Instance Norm": 'Yes',
+                 "Instance Norm": 'No',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'Yes',
                  "T_in": 20,    
@@ -28,7 +28,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Width": 32,
                  "Variables":3, 
                  "Noise":0.0, 
-                 "Loss Function": 'LP Loss'
+                 "Loss Function": 'LP Loss - Log'
                  }
 
 # %% 
@@ -520,8 +520,8 @@ class FNO2d(nn.Module):
         self.c4 = UNet3d(self.width, self.width)
         self.c5 = UNet3d(self.width, self.width)
 
-        self.norm = nn.InstanceNorm2d(self.width)
-        # self.norm = nn.Identity()
+        # self.norm = nn.InstanceNorm2d(self.width)
+        self.norm = nn.Identity()
 
         self.fc_d1 = nn.Linear(width_vars, 64)
         self.fc_d2 = nn.Linear(64, num_vars)
@@ -752,8 +752,8 @@ for ep in tqdm(range(epochs)):
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             im = model(xx)
-            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-            # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
+            # loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
             if t == 0:
                 pred = im
