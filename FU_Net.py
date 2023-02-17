@@ -23,11 +23,11 @@ configuration = {"Case": 'Multi-Blobs',
                  "Instance Norm": 'No',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'Yes',
-                 "T_in": 20,    
-                 "T_out": 30,
+                 "T_in": 10,    
+                 "T_out": 50,
                  "Step": 5,
-                 "Modes":16,
-                 "Width_time": 32,
+                 "Modes":32,
+                 "Width_time": 64,
                  "Width_vars": 16,
                  "Variables":3, 
                  "Noise":0.0, 
@@ -519,16 +519,16 @@ class FU_Net(nn.Module):
         self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
         self.unet = UNet3d(T_in+2, self.width_time)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
 
-        self.fc1_var = nn.Linear(self.width_vars, 64)
+        self.fc1_var = nn.Linear(self.width_vars, 64)   
         self.fc2_var = nn.Linear(64, num_vars)
 
         self.fc1_time = nn.Linear(self.width_time, 128)
@@ -555,9 +555,9 @@ class FU_Net(nn.Module):
         x0 = self.f0(x)
         x = self.f1(x0)
         x = self.f2(x) + x0 
-        x1 = self.f3(x)
-        x = self.f4(x1)
-        x = self.f5(x) + x1 
+        # x1 = self.f3(x)
+        # x = self.f4(x1)
+        # x = self.f5(x) + x1 
 
 
         x = x.permute(0, 2, 3, 4, 1)

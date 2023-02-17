@@ -752,7 +752,7 @@ for ep in tqdm(range(epochs)):
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             im = model(xx)
-            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            loss += myloss(im.reshape(batch _size, -1), y.reshape(batch_size, -1))
             # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
             if t == 0:
