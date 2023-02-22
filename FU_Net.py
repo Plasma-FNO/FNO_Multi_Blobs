@@ -13,9 +13,9 @@ configuration = {"Case": 'Multi-Blobs',
                  "Field_Mixing": 'UNet',
                  "Type": '2D Time',
                  "Epochs": 500,
-                 "Batch Size": 5,
+                 "Batch Size": 10,
                  "Optimizer": 'Adam',
-                 "Learning Rate": 0.001,
+                 "Learning Rate": 0.005,
                  "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
@@ -24,14 +24,16 @@ configuration = {"Case": 'Multi-Blobs',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'Yes',
                  "T_in": 10,    
-                 "T_out": 50,
+                 "T_out": 40,
                  "Step": 5,
-                 "Modes":32,
-                 "Width_time": 64,
-                 "Width_vars": 16,
+                 "Modes":16,
+                 "Width_time": 32, #FNO
+                 "Width_vars": 16, #U-Net
                  "Variables":3, 
                  "Noise":0.0, 
-                 "Loss Function": 'LP Loss'
+                 "Loss Function": 'LP Loss',
+                 "Spatial Resolution": 1,
+                 "Temporal Resolution": 1,
                  }
 
 # %%
@@ -630,7 +632,9 @@ v = v.permute(0, 2, 3, 1)
 p = torch.from_numpy(p_sol)
 p = p.permute(0, 2, 3, 1)
 
-uvp = torch.stack((u,v,p), dim=1)
+t_res = configuration['Temporal Resolution']
+x_res = configuration['Spatial Resolution']
+uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
 
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)

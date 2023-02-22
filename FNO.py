@@ -6,38 +6,39 @@ Created on 6 Jan 2023
 FNO modelled over the MHD data built using JOREK for multi-blob diffusion. 
 """
 # %%
-configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'Phi',
-                 "Type": '2D Time',
-                 "Epochs": 500,
+configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
+                 "Field": 'Phi', #Variable we are modelling
+                 "Type": '2D Time', #FNO Architecture
+                 "Epochs": 500, 
                  "Batch Size": 20,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
                  "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
-                 "Normalisation Strategy": 'Gaussian',
-                 "Instance Norm": 'Yes',
+                 "Normalisation Strategy": 'Min-Max',
+                 "Instance Norm": 'No', #Layerwise Normalisation
                  "Log Normalisation":  'No',
-                 "Physics Normalisation": 'Yes',
-                 "T_in": 30,    
-                 "T_out": 70,
-                 "Step": 10,
-                 "Modes":16,
-                 "Width": 32,
+                 "Physics Normalisation": 'Yes', #Normalising the Variable 
+                 "T_in": 30, #Input time steps
+                 "T_out": 70, #Max simulation time
+                 "Step": 10, #Time steps output in each forward call
+                 "Modes":16, #Number of Fourier Modes
+                 "Width": 32, #Features of the Convolutional Kernel
                  "Variables":1, 
                  "Noise":0.0, 
-                 "Loss Function": 'LP Loss'
+                 "Loss Function": 'LP Loss' #Choice of Loss Fucnction
                  }
 
 # %% 
+#Simvue Setup. If not using comment out this section and anything with run
 from simvue import Run
 run = Run()
 run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs'], metadata=configuration)
 
 
 # %%
-
+#Importing the necessary packages. 
 import numpy as np
 from tqdm import tqdm 
 import torch
@@ -58,6 +59,8 @@ from tqdm import tqdm
 torch.manual_seed(0)
 np.random.seed(0)
 
+# %% 
+#Setting up the directories - data location, model location and plots. 
 import os 
 path = os.getcwd()
 data_loc = os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))
@@ -66,7 +69,7 @@ file_loc = os.getcwd()
 
 
 # %%
-
+#Setting up CUDA
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -114,7 +117,7 @@ class UnitGaussianNormalizer(object):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
 
-# normalization, Gaussian
+# normalization, Gaussian - across the entire dataset
 class GaussianNormalizer(object):
     def __init__(self, x, eps=0.00001):
         super(GaussianNormalizer, self).__init__()
@@ -140,7 +143,7 @@ class GaussianNormalizer(object):
         self.std = self.std.cpu()
 
 
-# normalization, scaling by range
+# normalization, scaling by range - pointwise
 class RangeNormalizer(object):
     def __init__(self, x, low=-1.0, high=1.0):
         super(RangeNormalizer, self).__init__()
@@ -173,7 +176,7 @@ class RangeNormalizer(object):
         self.a = self.a.cpu()
         self.b = self.b.cpu()
 
-#normalization, rangewise but single value. 
+#normalization, rangewise but across the full domain 
 class MinMax_Normalizer(object):
     def __init__(self, x, low=-1.0, high=1.0):
         super(MinMax_Normalizer, self).__init__()
@@ -258,7 +261,7 @@ class LpLoss(object):
         return self.rel(x, y)
 
 # %%
-'''
+
 # #Adding Gaussian Noise to the training dataset
 # class AddGaussianNoise(object):
 #     def __init__(self, mean=0., std=1.):
@@ -278,21 +281,6 @@ class LpLoss(object):
 #         self.std = self.std.cpu()
 # # additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
 # additive_noise.cuda()
-'''
-
-# %%
-
-class MLP(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels):
-        super(MLP, self).__init__()
-        self.mlp1 = nn.Conv2d(in_channels, mid_channels, 1)
-        self.mlp2 = nn.Conv2d(mid_channels, out_channels, 1)
-
-    def forward(self, x):
-        x = self.mlp1(x)
-        x = F.gelu(x)
-        x = self.mlp2(x)
-        return x
 
 ################################################################
 # fourier layer
@@ -319,7 +307,6 @@ class SpectralConv2d(nn.Module):
     def compl_mul2d(self, input, weights):
         # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
         return torch.einsum("bixy,ioxy->boxy", input, weights)
-        # return torch.einsum("bitxy, itopxy->bopxy", input, weights)
 
 
     def forward(self, x):
@@ -369,13 +356,7 @@ class FNO2d(nn.Module):
         self.conv3 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv4 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv5 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        
-        # self.mlp0 = MLP(self.width, self.width, self.width)
-        # self.mlp1 = MLP(self.width, self.width, self.width)
-        # self.mlp2 = MLP(self.width, self.width, self.width)
-        # self.mlp3 = MLP(self.width, self.width, self.width)
-        # self.mlp4 = MLP(self.width, self.width, self.width)
-        # self.mlp5 = MLP(self.width, self.width, self.width)
+
 
         self.w0 = nn.Conv2d(self.width, self.width, 1)
         self.w1 = nn.Conv2d(self.width, self.width, 1)
@@ -384,8 +365,8 @@ class FNO2d(nn.Module):
         self.w4 = nn.Conv2d(self.width, self.width, 1)
         self.w5 = nn.Conv2d(self.width, self.width, 1)
 
-        self.norm = nn.InstanceNorm2d(self.width)
-        # self.norm = nn.Identity()
+        # self.norm = nn.InstanceNorm2d(self.width)
+        self.norm = nn.Identity()
 
         self.fc1 = nn.Linear(self.width, 128)
         self.fc2 = nn.Linear(128, step)
@@ -398,35 +379,29 @@ class FNO2d(nn.Module):
         x = x.permute(0, 3, 1, 2)
 
         x1 = self.norm(self.conv0(self.norm(x)))
-        # x1 = self.mlp0(x1)
         x2 = self.w0(x)
         x = x1+x2
         x = F.gelu(x)
 
         x1 = self.norm(self.conv1(self.norm(x)))
-        # x1 = self.mlp1(x1)    
         x2 = self.w1(x)
         x = x1+x2
         x = F.gelu(x)
 
         x1 = self.norm(self.conv2(self.norm(x)))
-        # x1 = self.mlp2(x1)
         x2 = self.w2(x)
         x = x1+x2
         x = F.gelu(x)
 
         x1 = self.norm(self.conv3(self.norm(x)))
-        # x1 = self.mlp3(x1)
         x2 = self.w3(x)
         x = x1+x2
 
         x1 = self.norm(self.conv4(self.norm(x)))
-        # x1 = self.mlp4(x1)
         x2 = self.w4(x)
         x = x1+x2
 
         x1 = self.norm(self.conv5(self.norm(x)))
-        # x1 = self.mlp5(x1)
         x2 = self.w5(x)
         x = x1+x2
 
@@ -461,7 +436,6 @@ class FNO2d(nn.Module):
 
         return c
 
-
 # %%
 
 ################################################################
@@ -489,27 +463,26 @@ x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
-ntrain = 240
+ntrain = 240 
 ntest = 20
-S = 106 #Grid Size
+S = 106 #Grid Size 
 
+#Extracting hyperparameters from the config dict
 modes = configuration['Modes']
 width = configuration['Width']
 output_size = configuration['Step']
-
 batch_size = configuration['Batch Size']
-
-batch_size2 = batch_size
-
-t1 = default_timer()
-
 T_in = configuration['T_in']
 T = configuration['T_out']
 step = configuration['Step']
 
+t1 = default_timer()
+
 np.random.shuffle(u_sol)
 u = torch.from_numpy(u_sol)
 u = u.permute(0, 2, 3, 1)
+
+#At this stage the data needs to be [Batch_Size, X, Y, T]
 
 train_a = u[:ntrain,:,:,:T_in]
 train_u = u[:ntrain,:,:,T_in:T+T_in]
@@ -520,24 +493,33 @@ test_u = u[-ntest:,:,:,T_in:T+T_in]
 print(train_u.shape)
 print(test_u.shape)
 
-
 # %%
-# a_normalizer = RangeNormalizer(train_a)
-# a_normalizer = MinMax_Normalizer(train_a)
-a_normalizer = GaussianNormalizer(train_a)
+#Normalising the train and test datasets with the preferred normalisation. 
+
+norm_strategy = configuration['Normalisation Strategy']
+
+if norm_strategy == 'Min-Max':
+    a_normalizer = MinMax_Normalizer(train_a)
+    y_normalizer = MinMax_Normalizer(train_u)
+
+if norm_strategy == 'Range':
+    a_normalizer = RangeNormalizer(train_a)
+    y_normalizer = RangeNormalizer(train_u)
+
+if norm_strategy == 'Min-Max':
+    a_normalizer = GaussianNormalizer(train_a)
+    y_normalizer = GaussianNormalizer(train_u)
+
+
 
 train_a = a_normalizer.encode(train_a)
 test_a = a_normalizer.encode(test_a)
 
-# y_normalizer = RangeNormalizer(train_u)
-# y_normalizer = MinMax_Normalizer(train_u)
-y_normalizer = GaussianNormalizer(train_u)
-
 train_u = y_normalizer.encode(train_u)
 test_u_encoded = y_normalizer.encode(test_u)
 
-
 # %%
+#Setting up the dataloaders for the test and train datasets. 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
 
@@ -550,52 +532,53 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 
+#Instantiating the Model. 
 model = FNO2d(modes, modes, width)
 # model = model.double()
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
-
-
 print("Number of model params : " + str(model.count_params()))
 
+#Setting up the optimisation schedule. 
 optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
 myloss = LpLoss(size_average=False)
-
-# %%
 
 epochs = configuration['Epochs']
 if torch.cuda.is_available():
     y_normalizer.cuda()
 
 # %%
+#Training Loop
 start_time = time.time()
-for ep in tqdm(range(epochs)):
+for ep in tqdm(range(epochs)): #Training Loop - Epochwise
     model.train()
     t1 = default_timer()
     train_l2_step = 0
     train_l2_full = 0
-    for xx, yy in train_loader:
+    for xx, yy in train_loader: #Training Loop - Batchwise
         optimizer.zero_grad()
         loss = 0
         xx = xx.to(device)
         yy = yy.to(device)
         # xx = additive_noise(xx)
         
-        for t in range(0, T, step):
+        for t in range(0, T, step): #Training Loop - Time rollouts. 
             y = yy[..., t:t + step]
             im = model(xx)
-            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-            # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
+            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1)) 
+            # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1))) #normalising with log
 
+            #Storing the rolled out outputs. 
             if t == 0:
                 pred = im
             else:
                 pred = torch.cat((pred, im), -1)
 
+            #Preparing the autoregressive input for the next time step. 
             xx = torch.cat((xx[..., step:], im), dim=-1)
 
         train_l2_step += loss.item()
@@ -603,9 +586,10 @@ for ep in tqdm(range(epochs)):
         train_l2_full += l2_full.item()
 
         loss.backward()
-        # l2_full.backward()
+        # train_l2_full.backward()
         optimizer.step()
 
+#Validation Loop
     test_l2_step = 0
     test_l2_full = 0
     with torch.no_grad():
@@ -617,8 +601,8 @@ for ep in tqdm(range(epochs)):
             for t in range(0, T, step):
                 y = yy[..., t:t + step]
                 im = model(xx)
-                # loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-                loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
+                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
                 if t == 0:
                     pred = im
@@ -702,7 +686,7 @@ pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 #Plotting the comparison plots
 
 idx = np.random.randint(0,ntest) 
-idx = 5
+# idx = 5
 
 if configuration['Log Normalisation'] == 'Yes':
     test_u = torch.exp(test_u)
@@ -773,7 +757,7 @@ output_plot = file_loc + '/Plots/MultiBlobs_' + configuration['Field'] + '_' + r
 plt.savefig(output_plot)
 
 # %%
-
+#Simvue Artifact storage
 CODE = ['FNO.py']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot]
