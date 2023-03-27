@@ -26,9 +26,9 @@ configuration = {"Case": 'Multi-Blobs',
                  "T_in": 10,    
                  "T_out": 40,
                  "Step": 5,
-                 "Modes":16,
-                 "Width_time": 32, #FNO
-                 "Width_vars": 16, #U-Net
+                 "Modes":32,
+                 "Width_time": 64, #FNO
+                 "Width_vars": 0, #U-Net
                  "Variables":3, 
                  "Noise":0.0, 
                  "Loss Function": 'LP Loss',
@@ -515,23 +515,23 @@ class FU_Net(nn.Module):
         self.width_vars = width_vars
         self.width_time = width_time
 
-        self.fc0_var = nn.Linear(num_vars, self.width_vars)
+        # self.fc0_var = nn.Linear(num_vars, self.width_vars)
         self.fc0_time  = nn.Linear(T_in+2, self.width_time)
 
         self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
-        self.unet = UNet3d(T_in+2, self.width_time)
+        # self.unet = UNet3d(T_in+2, self.width_time)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
 
-        self.fc1_var = nn.Linear(self.width_vars, 64)   
-        self.fc2_var = nn.Linear(64, num_vars)
+        # self.fc1_var = nn.Linear(self.width_vars, 64)   
+        # self.fc2_var = nn.Linear(64, num_vars)
 
         self.fc1_time = nn.Linear(self.width_time, 128)
         self.fc2_time = nn.Linear(128, step)
@@ -541,15 +541,15 @@ class FU_Net(nn.Module):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
 
-        x_u = x.permute(0,4,2,3,1)
-        x_u = self.fc0_var(x_u)
+        # x_u = x.permute(0,4,2,3,1)
+        # x_u = self.fc0_var(x_u)
 
-        x_u = self.unet(x_u)
+        # x_u = self.unet(x_u)
 
-        x_u = self.fc1_var(x_u)
-        x_u = F.gelu(x_u)
-        x_u = self.fc2_var(x_u)
-        x_u = x_u.permute(0,4,2,3,1)
+        # x_u = self.fc1_var(x_u)
+        # x_u = F.gelu(x_u)
+        # x_u = self.fc2_var(x_u)
+        # x_u = x_u.permute(0,4,2,3,1)
 
         x = self.fc0_time(x)
         x = x.permute(0, 4, 1, 2, 3)
@@ -557,13 +557,13 @@ class FU_Net(nn.Module):
         x0 = self.f0(x)
         x = self.f1(x0)
         x = self.f2(x) + x0 
-        # x1 = self.f3(x)
-        # x = self.f4(x1)
-        # x = self.f5(x) + x1 
+        x1 = self.f3(x)
+        x = self.f4(x1)
+        x = self.f5(x) + x1 
 
 
         x = x.permute(0, 2, 3, 4, 1)
-        x = x + x_u
+        x = x #+ x_u
 
         x = self.fc1_time(x)
         x = F.gelu(x)

@@ -4,16 +4,18 @@
 Created on 6 Jan 2023
 @author: vgopakum
 FNO modelled over the MHD data built using JOREK for multi-blob diffusion. 
+
+FNO combined with UNet - FUNet
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
-                 "Field_Mixing": 'Unet',
+                 "Field_Mixing": 'UNet',
                  "Type": '2D Time',
                  "Epochs": 500,
-                 "Batch Size": 5,
+                 "Batch Size": 10,
                  "Optimizer": 'Adam',
-                 "Learning Rate": 0.001,
+                 "Learning Rate": 0.005,
                  "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
@@ -21,23 +23,25 @@ configuration = {"Case": 'Multi-Blobs',
                  "Instance Norm": 'No',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'Yes',
-                 "T_in": 20,    
-                 "T_out": 30,
-                 "Step": 5,
-                 "Modes":16,
-                 "Width": 32,
+                 "T_in": 10,    
+                 "T_out": 40,
+                 "Step": 1,
+                 "Modes":32,
+                 "Width_time": 64, #FNO
+                 "Width_vars": 0, #U-Net
                  "Variables":3, 
                  "Noise":0.0, 
-                 "Loss Function": 'LP Loss'
+                 "Loss Function": 'LP Loss',
+                 "Spatial Resolution": 1,
+                 "Temporal Resolution": 1,
                  }
 
-# %% 
+# %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable'], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
 
-
-# %%
+# %% 
 
 import numpy as np
 from tqdm import tqdm 
@@ -60,16 +64,15 @@ from tqdm import tqdm
 torch.manual_seed(0)
 np.random.seed(0)
 
+# %% 
 import os 
 path = os.getcwd()
 data_loc = os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))
 # model_loc = os.path.dirname(os.path.dirname(os.getcwd()))
 file_loc = os.getcwd()
 
-
-# %%
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 
 # %%
@@ -305,28 +308,37 @@ class LpLoss(object):
     def __call__(self, x, y):
         return self.rel(x, y)
 
+
+# %% 
+x_grid = np.arange(0, 106)
+y_grid = np.arange(0, 106)
+S = 106 #Grid Size
+size_x = S
+size_y = S
+
+
+modes = configuration['Modes']
+width_time = configuration['Width_time']
+width_vars = configuration['Width_vars']
+output_size = configuration['Step']
+
+batch_size = configuration['Batch Size']
+
+batch_size2 = batch_size
+
+t1 = default_timer()
+
+T_in = configuration['T_in']
+T = configuration['T_out']
+step = configuration['Step']
+num_vars = configuration['Variables']
+
+
+
 # %%
-'''
-# #Adding Gaussian Noise to the training dataset
-# class AddGaussianNoise(object):
-#     def __init__(self, mean=0., std=1.):
-#         self.mean = torch.FloatTensor([mean])
-#         self.std = torch.FloatTensor([std])
-        
-#     def __call__(self, tensor):
-#         return tensor + torch.randn(tensor.size()).cuda() * self.std + self.mean
-    
-#     def __repr__(self):
-#         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
-#     def cuda(self):
-#         self.mean = self.mean.cuda()
-#         self.std = self.std.cuda()
-#     def cpu(self):
-#         self.mean = self.mean.cpu()
-#         self.std = self.std.cpu()
-# # additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
-# additive_noise.cuda()
-'''
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 # %%
 
@@ -353,7 +365,7 @@ class UNet3d(nn.Module):
         self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
 
 
-        # self.bottleneck = UNet3d._block(features, features * 2, name="bottleneck")
+        self.bottleneck = UNet3d._block(features, features * 2, name="bottleneck")
 
 
         self.upconv1 = nn.ConvTranspose3d(
@@ -367,9 +379,7 @@ class UNet3d(nn.Module):
 
     def forward(self, x):
         enc1 = self.encoder1(x)
-        print(enc1.shape)
         bottleneck = self.pool1(enc1)
-        print(bottleneck.shape)
         dec1 = self.upconv1(bottleneck)
         dec1 = torch.cat((dec1, enc1), dim=1)
         dec1 = self.decoder1(dec1)
@@ -407,7 +417,7 @@ class UNet3d(nn.Module):
                 ]
             )
         )
-    
+     
     def count_params(self):
         c = 0
         for p in self.parameters():
@@ -415,8 +425,8 @@ class UNet3d(nn.Module):
 
         return c
 
-unet = UNet3d(32, 32)
-unet(torch.ones(5, 32, 16, 106, 106))
+# unet = UNet3d(12, 32)
+# unet(torch.ones(5, 12, 106, 106, 32)).shape
 # %%
 ################################################################
 # fourier layer
@@ -435,8 +445,8 @@ class SpectralConv2d(nn.Module):
         self.modes2 = modes2
 
         self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, width_vars, self.modes1, self.modes2, dtype=torch.cfloat))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, width_vars, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
 
     # Complex multiplication
     def compl_mul2d(self, input, weights):
@@ -449,7 +459,7 @@ class SpectralConv2d(nn.Module):
         x_ft = torch.fft.rfft2(x)
 
         # Multiply relevant Fourier modes 
-        out_ft = torch.zeros(batchsize, self.out_channels, width_vars,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
+        out_ft = torch.zeros(batchsize, self.out_channels, num_vars,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
         out_ft[:, :, :, :self.modes1, :self.modes2] = \
             self.compl_mul2d(x_ft[:, :, :, :self.modes1, :self.modes2], self.weights1)
         out_ft[:, :, :, -self.modes1:, :self.modes2] = \
@@ -459,11 +469,33 @@ class SpectralConv2d(nn.Module):
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
 
-# %%
-
 class FNO2d(nn.Module):
     def __init__(self, modes1, modes2, width):
         super(FNO2d, self).__init__()
+
+
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.width = width
+
+        self.conv = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.w = nn.Conv3d(self.width, self.width, 1)
+    
+    
+    def forward(self, x):
+
+        x1 = self.conv(x)
+        x2 = self.w(x)
+        x = x1+x2
+        x = F.gelu(x)
+        return x 
+
+
+# %%
+
+class FU_Net(nn.Module):
+    def __init__(self, modes1, modes2, width_vars, width_time):
+        super(FU_Net, self).__init__()
 
         """
         The overall network. It contains 4 layers of the Fourier layer.
@@ -480,111 +512,62 @@ class FNO2d(nn.Module):
 
         self.modes1 = modes1
         self.modes2 = modes2
-        self.width = width
-        self.fc_d0 = nn.Linear(num_vars, width_vars)
-        self.fc0 = nn.Linear(T_in+2, self.width)
-        # input channel is 12: the solution of the previous T_in timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
+        self.width_vars = width_vars
+        self.width_time = width_time
 
-        self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv3 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv4 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv5 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        
-        # self.mlp0 = MLP(self.width, self.width, self.width)
-        # self.mlp1 = MLP(self.width, self.width, self.width)
-        # self.mlp2 = MLP(self.width, self.width, self.width)
-        # self.mlp3 = MLP(self.width, self.width, self.width)
-        # self.mlp4 = MLP(self.width, self.width, self.width)
-        # self.mlp5 = MLP(self.width, self.width, self.width)
+        # self.fc0_var = nn.Linear(num_vars, self.width_vars)
+        self.fc0_time  = nn.Linear(T_in+2, self.width_time)
 
-        self.w0 = nn.Conv3d(self.width, self.width, 1)
-        self.w1 = nn.Conv3d(self.width, self.width, 1)
-        self.w2 = nn.Conv3d(self.width, self.width, 1)
-        self.w3 = nn.Conv3d(self.width, self.width, 1)
-        self.w4 = nn.Conv3d(self.width, self.width, 1)
-        self.w5 = nn.Conv3d(self.width, self.width, 1)
+        self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
-        # self.c0 = nn.Conv3d(self.width, self.width, 1)
-        # self.c1 = nn.Conv3d(self.width, self.width, 1)
-        # self.c2 = nn.Conv3d(self.width, self.width, 1)
-        # self.c3 = nn.Conv3d(self.width, self.width, 1)
-        # self.c4 = nn.Conv3d(self.width, self.width, 1)
-        # self.c5 = nn.Conv3d(self.width, self.width, 1)
-
-        self.c0 = UNet3d(self.width, self.width)
-        self.c1 = UNet3d(self.width, self.width)
-        self.c2 = UNet3d(self.width, self.width)
-        self.c3 = UNet3d(self.width, self.width)
-        self.c4 = UNet3d(self.width, self.width)
-        self.c5 = UNet3d(self.width, self.width)
+        # self.unet = UNet3d(T_in+2, self.width_time)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
 
-        self.fc_d1 = nn.Linear(width_vars, 64)
-        self.fc_d2 = nn.Linear(64, num_vars)
+        # self.fc1_var = nn.Linear(self.width_vars, 64)   
+        # self.fc2_var = nn.Linear(64, num_vars)
 
-        self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, step)
+        self.fc1_time = nn.Linear(self.width_time, 128)
+        self.fc2_time = nn.Linear(128, step)
 
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
 
-        x = x.permute(0,2,3,4,1)
-        x = self.fc_d0(x)
+        # x_u = x.permute(0,4,2,3,1)
+        # x_u = self.fc0_var(x_u)
+
+        # x_u = self.unet(x_u)
+
+        # x_u = self.fc1_var(x_u)
+        # x_u = F.gelu(x_u)
+        # x_u = self.fc2_var(x_u)
+        # x_u = x_u.permute(0,4,2,3,1)
+
+        x = self.fc0_time(x)
         x = x.permute(0, 4, 1, 2, 3)
 
-        x = self.fc0(x)
-        x = x.permute(0, 4, 1, 2, 3)
+        x0 = self.f0(x)
+        x = self.f1(x0)
+        x = self.f2(x) + x0 
+        # x1 = self.f3(x)
+        # x = self.f4(x1)
+        # x = self.f5(x) + x1 
 
 
-        x1 = self.conv0(x)
-        x2 = self.w0(x)
-        x3 = self.c0(x)
-        x = x1+x2+x3
+        x = x.permute(0, 2, 3, 4, 1)
+        x = x #+ x_u
+
+        x = self.fc1_time(x)
         x = F.gelu(x)
-
-        x1 = self.conv1(x)
-        x2 = self.w1(x)
-        x3 = self.c1(x)
-        x = x1+x2+x3
-        x = F.gelu(x)
-
-        x1 = self.conv2(x)
-        x2 = self.w2(x)
-        x3 = self.c2(x)
-        x = x1+x2+x3
-        x = F.gelu(x)
-
-        x1 = self.conv3(x)
-        x2 = self.w3(x)
-        x3 = self.c3(x)
-        x = x1+x2+x3
-
-        x1 = self.conv4(x)
-        x2 = self.w4(x)
-        x3 = self.c4(x)
-        x = x1+x2+x3
-
-        x1 = self.conv5(x)
-        x2 = self.w5(x)
-        x3 = self.c5(x)
-        x = x1+x2+x3
-
-
-        x = x.permute(0, 1, 3, 4, 2)
-        x = self.fc_d1(x)
-        x = F.gelu(x)
-        x = self.fc_d2(x)
-
-        x = x.permute(0, 4, 2, 3, 1)
-        x = self.fc1(x)
-        x = F.gelu(x)
-        x = self.fc2(x)
+        x = self.fc2_time(x)
         
         return x
 
@@ -613,6 +596,11 @@ class FNO2d(nn.Module):
             c += reduce(operator.mul, list(p.size()))
 
         return c
+
+# model = FU_Net(modes, modes, width_vars, width_time)
+# model(torch.ones(5, 3, 106, 106, T_in)).shape
+
+
 # %%
 
 ################################################################
@@ -644,7 +632,9 @@ v = v.permute(0, 2, 3, 1)
 p = torch.from_numpy(p_sol)
 p = p.permute(0, 2, 3, 1)
 
-uvp = torch.stack((u,v,p), dim=1)
+t_res = configuration['Temporal Resolution']
+x_res = configuration['Spatial Resolution']
+uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
 
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
@@ -658,21 +648,12 @@ S = 106 #Grid Size
 size_x = S
 size_y = S
 
-
-modes = configuration['Modes']
-width = configuration['Width']
-width_vars = 16
-output_size = configuration['Step']
-
 batch_size = configuration['Batch Size']
 
 batch_size2 = batch_size
 
 t1 = default_timer()
 
-T_in = configuration['T_in']
-T = configuration['T_out']
-step = configuration['Step']
 
 
 train_a = uvp[:ntrain,:,:,:,:T_in]
@@ -703,20 +684,19 @@ test_u_encoded = y_normalizer.encode(test_u)
 
 # %%
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
 
 t2 = default_timer()
 print('preprocessing finished, time used:', t2-t1)
 
-# %%
+
+# %% 
 
 ################################################################
 # training and evaluation
 ################################################################
 
-model = FNO2d(modes, modes, width)
-# model = model.double()
-# model = nn.DataParallel(model, device_ids = [0,1])
+model = FU_Net(modes, modes, width_vars, width_time)
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
@@ -730,7 +710,6 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['
 myloss = LpLoss(size_average=False)
 
 # %%
-
 epochs = configuration['Epochs']
 if torch.cuda.is_available():
     y_normalizer.cuda()
@@ -752,7 +731,7 @@ for ep in tqdm(range(epochs)):
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             im = model(xx)
-            loss += myloss(im.reshape(batch _size, -1), y.reshape(batch_size, -1))
+            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
             # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
             if t == 0:
@@ -943,7 +922,7 @@ for dim in range(num_vars):
 
 # %%
 
-CODE = ['FNO_multiple.py']
+CODE = ['FNO_Multiple.py']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
 
@@ -979,3 +958,6 @@ for output_file in OUTPUTS:
 run.close()
 
 # %%
+
+
+        

@@ -7,7 +7,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
-                 "Field": 'Phi', #Variable we are modelling
+                 "Field": 'rho', #Variable we are modelling - Phi, rho, T
                  "Type": '2D Time', #FNO Architecture
                  "Epochs": 500, 
                  "Batch Size": 20,
@@ -20,11 +20,11 @@ configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
                  "Instance Norm": 'No', #Layerwise Normalisation
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'Yes', #Normalising the Variable 
-                 "T_in": 30, #Input time steps
-                 "T_out": 70, #Max simulation time
+                 "T_in": 10, #Input time steps
+                 "T_out": 10, #Max simulation time
                  "Step": 10, #Time steps output in each forward call
-                 "Modes":16, #Number of Fourier Modes
-                 "Width": 32, #Features of the Convolutional Kernel
+                 "Modes":32, #Number of Fourier Modes
+                 "Width": 64, #Features of the Convolutional Kernel
                  "Variables":1, 
                  "Noise":0.0, 
                  "Loss Function": 'LP Loss' #Choice of Loss Fucnction
@@ -463,7 +463,7 @@ x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
-ntrain = 240 
+ntrain = 100
 ntest = 20
 S = 106 #Grid Size 
 
@@ -636,7 +636,7 @@ torch.save(model.state_dict(),  model_loc)
 # %%
 #Testing 
 batch_size = 1
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1, shuffle=False)
 pred_set = torch.zeros(test_u.shape)
 index = 0
 with torch.no_grad():
@@ -648,8 +648,8 @@ with torch.no_grad():
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
-            # loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
-            loss += myloss(out.reshape(batch_size, -1)*torch.log(out.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
+            loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            # loss += myloss(out.reshape(batch_size, -1)*torch.log(out.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
             if t == 0:
                 pred = out
