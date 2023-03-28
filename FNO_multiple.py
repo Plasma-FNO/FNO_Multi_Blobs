@@ -5,12 +5,12 @@ Created on 6 Jan 2023
 @author: vgopakum
 FNO modelled over the MHD data built using JOREK for multi-blob diffusion. 
 
-FNO combined with UNet - FUNet
+Multivariable FNO
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
-                 "Field_Mixing": 'UNet',
+                 "Field_Mixing": 'Channel',
                  "Type": '2D Time',
                  "Epochs": 500,
                  "Batch Size": 10,
@@ -25,9 +25,9 @@ configuration = {"Case": 'Multi-Blobs',
                  "Physics Normalisation": 'Yes',
                  "T_in": 10,    
                  "T_out": 40,
-                 "Step": 1,
-                 "Modes":32,
-                 "Width_time": 64, #FNO
+                 "Step": 5,
+                 "Modes":16,
+                 "Width_time": 32, #FNO
                  "Width_vars": 0, #U-Net
                  "Variables":3, 
                  "Noise":0.0, 
@@ -35,6 +35,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Spatial Resolution": 1,
                  "Temporal Resolution": 1,
                  }
+
 
 # %%
 from simvue import Run
@@ -354,79 +355,6 @@ class MLP(nn.Module):
         x = self.mlp2(x)
         return x
 
-
-class UNet3d(nn.Module):
-
-    def __init__(self, in_channels, out_channels, init_features=64):
-        super(UNet3d, self).__init__()
-
-        features = init_features
-        self.encoder1 = UNet3d._block(in_channels, features, name="enc1")
-        self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
-
-
-        self.bottleneck = UNet3d._block(features, features * 2, name="bottleneck")
-
-
-        self.upconv1 = nn.ConvTranspose3d(
-            features, features, kernel_size=(2,2,2), stride=2
-        )
-        self.decoder1 = UNet3d._block(features*2, features, name="dec1")
-
-        self.conv = nn.Conv3d(
-            in_channels=features, out_channels=out_channels, kernel_size=1
-        )
-
-    def forward(self, x):
-        enc1 = self.encoder1(x)
-        bottleneck = self.pool1(enc1)
-        dec1 = self.upconv1(bottleneck)
-        dec1 = torch.cat((dec1, enc1), dim=1)
-        dec1 = self.decoder1(dec1)
-        return self.conv(dec1)
-
-    @staticmethod
-    def _block(in_channels, features, name):
-        return nn.Sequential(
-            OrderedDict(
-                [
-                    (
-                        name + "conv1",
-                        nn.Conv3d(
-                            in_channels=in_channels,
-                            out_channels=features,
-                            kernel_size=3,
-                            padding=1,
-                            bias=False,
-                        ),
-                    ),
-                    (name + "norm1", nn.BatchNorm3d(num_features=features)),
-                    (name + "tanh1", nn.Tanh()),
-                    # (
-                    #     name + "conv2",
-                    #     nn.Conv3d(
-                    #         in_channels=features,
-                    #         out_channels=features,
-                    #         kernel_size=3,
-                    #         padding=1,
-                    #         bias=False,
-                    #     ),
-                    # ),
-                    # (name + "norm2", nn.BatchNorm3d(num_features=features)),
-                    # (name + "tanh2", nn.Tanh()),
-                ]
-            )
-        )
-     
-    def count_params(self):
-        c = 0
-        for p in self.parameters():
-            c += reduce(operator.mul, list(p.size()))
-
-        return c
-
-# unet = UNet3d(12, 32)
-# unet(torch.ones(5, 12, 106, 106, 32)).shape
 # %%
 ################################################################
 # fourier layer
@@ -493,9 +421,9 @@ class FNO2d(nn.Module):
 
 # %%
 
-class FU_Net(nn.Module):
+class FNO_multi(nn.Module):
     def __init__(self, modes1, modes2, width_vars, width_time):
-        super(FU_Net, self).__init__()
+        super(FNO_multi, self).__init__()
 
         """
         The overall network. It contains 4 layers of the Fourier layer.
@@ -515,23 +443,21 @@ class FU_Net(nn.Module):
         self.width_vars = width_vars
         self.width_time = width_time
 
-        # self.fc0_var = nn.Linear(num_vars, self.width_vars)
         self.fc0_time  = nn.Linear(T_in+2, self.width_time)
+
+        # self.padding = 8 # pad the domain if input is non-periodic
 
         self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
-        # self.unet = UNet3d(T_in+2, self.width_time)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
 
-        # self.fc1_var = nn.Linear(self.width_vars, 64)   
-        # self.fc2_var = nn.Linear(64, num_vars)
 
         self.fc1_time = nn.Linear(self.width_time, 128)
         self.fc2_time = nn.Linear(128, step)
@@ -541,29 +467,25 @@ class FU_Net(nn.Module):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
 
-        # x_u = x.permute(0,4,2,3,1)
-        # x_u = self.fc0_var(x_u)
-
-        # x_u = self.unet(x_u)
-
-        # x_u = self.fc1_var(x_u)
-        # x_u = F.gelu(x_u)
-        # x_u = self.fc2_var(x_u)
-        # x_u = x_u.permute(0,4,2,3,1)
 
         x = self.fc0_time(x)
         x = x.permute(0, 4, 1, 2, 3)
+        
+        
+        # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
         x0 = self.f0(x)
         x = self.f1(x0)
         x = self.f2(x) + x0 
-        # x1 = self.f3(x)
-        # x = self.f4(x1)
-        # x = self.f5(x) + x1 
+        x1 = self.f3(x)
+        x = self.f4(x1)
+        x = self.f5(x) + x1 
+
+        # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
 
 
         x = x.permute(0, 2, 3, 4, 1)
-        x = x #+ x_u
+        x = x 
 
         x = self.fc1_time(x)
         x = F.gelu(x)
@@ -643,7 +565,7 @@ t_grid = np.load(data)['time'].astype(np.float32)
 
 
 ntrain = 240
-ntest = 20
+ntest = 38
 S = 106 #Grid Size
 size_x = S
 size_y = S
@@ -696,7 +618,7 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 
-model = FU_Net(modes, modes, width_vars, width_time)
+model = FNO_multi(modes, modes, width_vars, width_time)
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
