@@ -12,7 +12,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
                  "Field_Mixing": 'Channel',
                  "Type": '2D Time',
-                 "Epochs": 500,
+                 "Epochs": 0,
                  "Batch Size": 10,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.005,
@@ -26,8 +26,8 @@ configuration = {"Case": 'Multi-Blobs',
                  "T_in": 10,    
                  "T_out": 40,
                  "Step": 5,
-                 "Modes":2,
-                 "Width_time":64, #FNO
+                 "Modes":16,
+                 "Width_time":32, #FNO
                  "Width_vars": 0, #U-Net
                  "Variables":3, 
                  "Noise":0.0, 
@@ -39,8 +39,8 @@ configuration = {"Case": 'Multi-Blobs',
 
 # %%
 from simvue import Run
-run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
+run = Run(mode='disabled')
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Plots"], metadata=configuration)
 
 # %% 
 
@@ -334,8 +334,6 @@ T = configuration['T_out']
 step = configuration['Step']
 num_vars = configuration['Variables']
 
-
-
 # %%
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -519,9 +517,6 @@ class FNO_multi(nn.Module):
 
         return c
 
-# model = FU_Net(modes, modes, width_vars, width_time)
-# model(torch.ones(5, 3, 106, 106, T_in)).shape
-
 
 # %%
 
@@ -619,6 +614,7 @@ print('preprocessing finished, time used:', t2-t1)
 ################################################################
 
 model = FNO_multi(modes, modes, width_vars, width_time)
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_strong-gloss')
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
@@ -631,87 +627,6 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['
 
 myloss = LpLoss(size_average=False)
 
-# %%
-epochs = configuration['Epochs']
-if torch.cuda.is_available():
-    y_normalizer.cuda()
-
-# %%
-start_time = time.time()
-for ep in tqdm(range(epochs)):
-    model.train()
-    t1 = default_timer()
-    train_l2_step = 0
-    train_l2_full = 0
-    for xx, yy in train_loader:
-        optimizer.zero_grad()
-        loss = 0
-        xx = xx.to(device)
-        yy = yy.to(device)
-        # xx = additive_noise(xx)
-
-        for t in range(0, T, step):
-            y = yy[..., t:t + step]
-            im = model(xx)
-            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-            # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
-
-            if t == 0:
-                pred = im
-            else:
-                pred = torch.cat((pred, im), -1)
-
-            xx = torch.cat((xx[..., step:], im), dim=-1)
-
-        train_l2_step += loss.item()
-        l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
-        train_l2_full += l2_full.item()
-
-        loss.backward()
-        # l2_full.backward()
-        optimizer.step()
-
-    test_l2_step = 0
-    test_l2_full = 0
-    with torch.no_grad():
-        for xx, yy in test_loader:
-            loss = 0
-            xx = xx.to(device)
-            yy = yy.to(device)
-
-            for t in range(0, T, step):
-                y = yy[..., t:t + step]
-                im = model(xx)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-
-                if t == 0:
-                    pred = im
-                else:
-                    pred = torch.cat((pred, im), -1)
-
-            xx = torch.cat((xx[..., step:], im), dim=-1)
-
-            # pred = y_normalizer.decode(pred)
-
-            test_l2_step += loss.item()
-            test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
-
-    t2 = default_timer()
-    scheduler.step()
-
-    train_loss = train_l2_full / ntrain
-    test_loss = test_l2_full / ntest
-
-    print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss per step: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_l2_step / ntest / (T / step), test_loss))
-
-    run.log_metrics({'Train Loss': train_loss, 
-                    'Test Loss': test_loss})
-
-train_time = time.time() - start_time
-# %%
-#Saving the Model
-model_loc = file_loc + '/Models/FNO_multi_blobs_' + run.name + '.pth'
-torch.save(model.state_dict(),  model_loc)
 
 # %%
 #Testing 
