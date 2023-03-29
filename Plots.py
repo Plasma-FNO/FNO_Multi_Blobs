@@ -353,7 +353,101 @@ class MLP(nn.Module):
         x = self.mlp2(x)
         return x
 
+
 # %%
+
+################################################################
+# Loading Data 
+################################################################
+
+# %%
+data = data_loc + '/Data/MHD_multi_blobs.npz'
+
+# %%
+field = configuration['Field']
+dims = ['rho', 'Phi', 'T']
+num_vars = configuration['Variables']
+
+u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
+v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
+
+u_sol = np.nan_to_num(u_sol)
+v_sol = np.nan_to_num(v_sol)
+p_sol = np.nan_to_num(p_sol)
+
+u = torch.from_numpy(u_sol)
+u = u.permute(0, 2, 3, 1)
+
+v = torch.from_numpy(v_sol)
+v = v.permute(0, 2, 3, 1)
+
+p = torch.from_numpy(p_sol)
+p = p.permute(0, 2, 3, 1)
+
+t_res = configuration['Temporal Resolution']
+x_res = configuration['Spatial Resolution']
+uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
+
+
+x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
+y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
+t_grid = np.load(data)['time'].astype(np.float32)
+
+
+ntrain = 240
+ntest = 38
+S = 106 #Grid Size
+size_x = S
+size_y = S
+
+batch_size = configuration['Batch Size']
+
+batch_size2 = batch_size
+
+t1 = default_timer()
+
+
+
+train_a = uvp[:ntrain,:,:,:,:T_in]
+train_u = uvp[:ntrain,:,:,:,T_in:T+T_in]
+
+test_a = uvp[-ntest:,:,:,:,:T_in]
+test_u = uvp[-ntest:,:,:,:,T_in:T+T_in]
+
+print(train_u.shape)
+print(test_u.shape)
+
+
+# %%
+# a_normalizer = RangeNormalizer(train_a)
+a_normalizer = MinMax_Normalizer(train_a)
+# a_normalizer = GaussianNormalizer(train_a)
+
+train_a = a_normalizer.encode(train_a)
+test_a = a_normalizer.encode(test_a)
+
+# y_normalizer = RangeNormalizer(train_u)
+y_normalizer = MinMax_Normalizer(train_u)
+# y_normalizer = GaussianNormalizer(train_u)
+
+train_u = y_normalizer.encode(train_u)
+test_u_encoded = y_normalizer.encode(test_u)
+
+
+# %%
+train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
+
+t2 = default_timer()
+print('preprocessing finished, time used:', t2-t1)
+
+
+# %% 
+
+################################################################
+# Evaluation
+################################################################
 ################################################################
 # fourier layer
 ################################################################
@@ -448,9 +542,9 @@ class FNO_multi(nn.Module):
         self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
 
         # self.norm = nn.InstanceNorm2d(self.width)
@@ -475,9 +569,9 @@ class FNO_multi(nn.Module):
         x0 = self.f0(x)
         x = self.f1(x0)
         x = self.f2(x) + x0 
-        x1 = self.f3(x)
-        x = self.f4(x1)
-        x = self.f5(x) + x1 
+        # x1 = self.f3(x)
+        # x = self.f4(x1)
+        # x = self.f5(x) + x1 
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
 
@@ -518,103 +612,8 @@ class FNO_multi(nn.Module):
         return c
 
 
-# %%
-
-################################################################
-# Loading Data 
-################################################################
-
-# %%
-data = data_loc + '/Data/MHD_multi_blobs.npz'
-
-# %%
-field = configuration['Field']
-dims = ['rho', 'Phi', 'T']
-num_vars = configuration['Variables']
-
-u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
-v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
-
-u_sol = np.nan_to_num(u_sol)
-v_sol = np.nan_to_num(v_sol)
-p_sol = np.nan_to_num(p_sol)
-
-u = torch.from_numpy(u_sol)
-u = u.permute(0, 2, 3, 1)
-
-v = torch.from_numpy(v_sol)
-v = v.permute(0, 2, 3, 1)
-
-p = torch.from_numpy(p_sol)
-p = p.permute(0, 2, 3, 1)
-
-t_res = configuration['Temporal Resolution']
-x_res = configuration['Spatial Resolution']
-uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
-
-
-x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
-y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
-t_grid = np.load(data)['time'].astype(np.float32)
-
-
-ntrain = 240
-ntest = 38
-S = 106 #Grid Size
-size_x = S
-size_y = S
-
-batch_size = configuration['Batch Size']
-
-batch_size2 = batch_size
-
-t1 = default_timer()
-
-
-
-train_a = uvp[:ntrain,:,:,:,:T_in]
-train_u = uvp[:ntrain,:,:,:,T_in:T+T_in]
-
-test_a = uvp[-ntest:,:,:,:,:T_in]
-test_u = uvp[-ntest:,:,:,:,T_in:T+T_in]
-
-print(train_u.shape)
-print(test_u.shape)
-
-
-# %%
-# a_normalizer = RangeNormalizer(train_a)
-a_normalizer = MinMax_Normalizer(train_a)
-# a_normalizer = GaussianNormalizer(train_a)
-
-train_a = a_normalizer.encode(train_a)
-test_a = a_normalizer.encode(test_a)
-
-# y_normalizer = RangeNormalizer(train_u)
-y_normalizer = MinMax_Normalizer(train_u)
-# y_normalizer = GaussianNormalizer(train_u)
-
-train_u = y_normalizer.encode(train_u)
-test_u_encoded = y_normalizer.encode(test_u)
-
-
-# %%
-train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
-
-t2 = default_timer()
-print('preprocessing finished, time used:', t2-t1)
-
-
-# %% 
-
-################################################################
-# training and evaluation
-################################################################
-
 model = FNO_multi(modes, modes, width_vars, width_time)
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_strong-gloss')
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_strong-gloss.pth', map_location=torch.device('cpu')))
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
@@ -669,12 +668,12 @@ print('(MSE) Testing Error: %.3e' % (MSE_error))
 print('(MAE) Testing Error: %.3e' % (MAE_error))
 print('(LP) Testing Error: %.3e' % (LP_error))
 
-run.update_metadata({'Training Time': float(train_time),
-                     'MSE Test Error': float(MSE_error),
+run.update_metadata({'MSE Test Error': float(MSE_error),
                      'MAE Test Error': float(MAE_error),
                      'LP Test Error': float(LP_error)
                     })
 
+pred_set_encoded = pred_set
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 
 # %%
@@ -760,42 +759,62 @@ for dim in range(num_vars):
 
 # %%
 
-CODE = ['FNO_multiple.py']
-INPUTS = []
-OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
+# CODE = ['FNO_multiple.py']
+# INPUTS = []
+# OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
 
-# Save code files
-for code_file in CODE:
-    if os.path.isfile(code_file):
-        run.save(code_file, 'code')
-    elif os.path.isdir(code_file):
-        run.save_directory(code_file, 'code', 'text/plain', preserve_path=True)
-    else:
-        print('ERROR: code file %s does not exist' % code_file)
-
-
-# Save input files
-for input_file in INPUTS:
-    if os.path.isfile(input_file):
-        run.save(input_file, 'input')
-    elif os.path.isdir(input_file):
-        run.save_directory(input_file, 'input', 'text/plain', preserve_path=True)
-    else:
-        print('ERROR: input file %s does not exist' % input_file)
+# # Save code files
+# for code_file in CODE:
+#     if os.path.isfile(code_file):
+#         run.save(code_file, 'code')
+#     elif os.path.isdir(code_file):
+#         run.save_directory(code_file, 'code', 'text/plain', preserve_path=True)
+#     else:
+#         print('ERROR: code file %s does not exist' % code_file)
 
 
-# Save output files
-for output_file in OUTPUTS:
-    if os.path.isfile(output_file):
-        run.save(output_file, 'output')
-    elif os.path.isdir(output_file):
-        run.save_directory(output_file, 'output', 'text/plain', preserve_path=True)   
-    else:
-        print('ERROR: output file %s does not exist' % output_file)
+# # Save input files
+# for input_file in INPUTS:
+#     if os.path.isfile(input_file):
+#         run.save(input_file, 'input')
+#     elif os.path.isdir(input_file):
+#         run.save_directory(input_file, 'input', 'text/plain', preserve_path=True)
+#     else:
+#         print('ERROR: input file %s does not exist' % input_file)
+
+
+# # Save output files
+# for output_file in OUTPUTS:
+#     if os.path.isfile(output_file):
+#         run.save(output_file, 'output')
+#     elif os.path.isdir(output_file):
+#         run.save_directory(output_file, 'output', 'text/plain', preserve_path=True)   
+#     else:
+#         print('ERROR: output file %s does not exist' % output_file)
 
 run.close()
 
 # %%
 
+#Plotting the error growth across time.
+err_rho = [] 
+err_phi = []
+err_T = []
+for ii in range(T):
+    err_rho.append(torch.abs(pred_set_encoded[:,0,:,:,ii] - test_u_encoded[:,0,:,:,ii]).mean())
+    err_phi.append(torch.abs(pred_set_encoded[:,1,:,:,ii] - test_u_encoded[:,1,:,:,ii]).mean())
+    err_T.append(torch.abs(pred_set_encoded[:,2,:,:,ii] - test_u_encoded[:,2,:,:,ii]).mean())
 
-        
+err_rho = np.asarray(err_rho)
+err_phi = np.asarray(err_phi)
+err_T = np.asarray(err_T)
+
+# %%
+plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'tab:blue')
+plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'tab:orange')
+plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'tab:green')
+plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'tab:red', ls='--')
+plt.legend()
+plt.xlabel('Time Steps')
+plt.ylabel('NMAE ')
+# %%
