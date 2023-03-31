@@ -7,7 +7,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion. Tetsi
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'Phi',
+                 "Field": 'rho',
                  "Type": '2D Time',
                  "Epochs": 0,
                  "Batch Size": 20,
@@ -34,7 +34,7 @@ configuration = {"Case": 'Multi-Blobs',
 
 # %% 
 from simvue import Run
-run = Run()
+run = Run(mode='disabled')
 run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'UQ'], metadata=configuration)
 
 
@@ -656,8 +656,8 @@ for ep in tqdm(range(epochs)):
 train_time = time.time() - start_time
 # %%
 #Saving the Model
-model_loc = file_loc + '/Models/FNO_multi_blobs_' + run.name + '.pth'
-torch.save(model.state_dict(),  model_loc)
+# model_loc = file_loc + '/Models/FNO_multi_blobs_' + run.name + '.pth'
+# torch.save(model.state_dict(),  model_loc)
 
 # %%
 #Testing 
@@ -825,8 +825,8 @@ run.close()
 #Visualising the results. 
 
 model = FNO2d(modes, modes, width)
-model.load_state_dict(torch.load(path + '/Models/FNO_multi_blobs_grouchy-expense.pth', map_location='cpu')) #Phi
-# model.load_state_dict(torch.load(path + '/Models/FNO_multi_blobs_greedy-mass.pth', map_location='cpu')) #rho
+# model.load_state_dict(torch.load(path + '/Models/FNO_multi_blobs_grouchy-expense.pth', map_location='cpu')) #Phi
+model.load_state_dict(torch.load(path + '/Models/FNO_multi_blobs_greedy-mass.pth', map_location='cpu')) #rho
 
 # %%
 idx = 6
@@ -946,7 +946,7 @@ fig.colorbar(pcm, pad=0.05)
 
 # %%
 
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 u_field = preds_std[0]
 
@@ -959,13 +959,15 @@ v_max_2 = np.max(u_field[:, :, int(T/2)])
 v_min_3 = np.min(u_field[:, :, -1])
 v_max_3 = np.max(u_field[:, :, -1])
 
-fig = plt.figure(figsize=plt.figaspect(0.7))
+fig = plt.figure(figsize=plt.figaspect(0.4))
 ax = fig.add_subplot(1,3,1)
 pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
 # ax.title.set_text('Initial')
 ax.title.set_text('t='+ str(T_in))
 ax.set_ylabel('STD')
-fig.colorbar(pcm, pad=0.05)
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+fig.colorbar(pcm, cax = cax)
 
 
 ax = fig.add_subplot(1,3,2)
@@ -974,7 +976,9 @@ pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5
 ax.title.set_text('t='+ str(int((T/2+T_in))))
 ax.axes.xaxis.set_ticks([])
 ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+fig.colorbar(pcm, cax = cax)
 
 
 ax = fig.add_subplot(1,3,3)
@@ -983,11 +987,15 @@ pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5
 ax.title.set_text('t='+str(T+T_in))
 ax.axes.xaxis.set_ticks([])
 ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+fig.colorbar(pcm, cax = cax)
 
+
+   
 # # %%
 
-# %%
+    # %%
 T = configuration['T_out']
 
 pred_means =  []

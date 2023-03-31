@@ -1,3 +1,4 @@
+          
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -9,7 +10,7 @@ Multivariable FNO
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'rho, Phi, T',
+                 "Field": 'T, rho, Phi',
                  "Field_Mixing": 'Channel',
                  "Type": '2D Time',
                  "Epochs": 500,
@@ -26,14 +27,16 @@ configuration = {"Case": 'Multi-Blobs',
                  "T_in": 10,    
                  "T_out": 40,
                  "Step": 5,
-                 "Modes":16,
+                 "Modes":32,
                  "Width_time":64, #FNO
-                 "Width_vars": 32, #U-Net
+                 "Width_vars": 0, #U-Net
                  "Variables":3, 
                  "Noise":0.0, 
                  "Loss Function": 'LP Loss',
                  "Spatial Resolution": 1,
-                 "Temporal Resolution": 1
+                 "Temporal Resolution": 1,
+                #  "UQ": 'Dropout',
+                #  "Dropout Rate": 0.9
                  }
 
 
@@ -181,7 +184,7 @@ class RangeNormalizer(object):
 
 #normalization, rangewise but single value. 
 class MinMax_Normalizer(object):
-    def __init__(self, x, low=-1.0, high=1.0):
+    def __init__(self, x, low=0.0, high=1.0):
         super(MinMax_Normalizer, self).__init__()
         min_u = torch.min(x[:,0,:,:,:])
         max_u = torch.max(x[:,0,:,:,:])
@@ -373,8 +376,8 @@ class SpectralConv2d(nn.Module):
         self.modes2 = modes2
 
         self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, width_vars, self.modes1, self.modes2, dtype=torch.cfloat))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, width_vars, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
 
     # Complex multiplication
     def compl_mul2d(self, input, weights):
@@ -387,7 +390,7 @@ class SpectralConv2d(nn.Module):
         x_ft = torch.fft.rfft2(x)
 
         # Multiply relevant Fourier modes 
-        out_ft = torch.zeros(batchsize, self.out_channels, width_vars,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
+        out_ft = torch.zeros(batchsize, self.out_channels, num_vars,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
         out_ft[:, :, :, :self.modes1, :self.modes2] = \
             self.compl_mul2d(x_ft[:, :, :, :self.modes1, :self.modes2], self.weights1)
         out_ft[:, :, :, -self.modes1:, :self.modes2] = \
@@ -443,7 +446,6 @@ class FNO_multi(nn.Module):
         self.width_vars = width_vars
         self.width_time = width_time
 
-        self.fc0_var = nn.Linear(num_vars, self.width_vars)
         self.fc0_time  = nn.Linear(T_in+2, self.width_time)
 
         # self.padding = 8 # pad the domain if input is non-periodic
@@ -451,15 +453,15 @@ class FNO_multi(nn.Module):
         self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
+        # self.dropout = nn.Dropout(p=0.1)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
 
-        self.fc1_var = nn.Linear(self.width_vars, num_vars)
 
         self.fc1_time = nn.Linear(self.width_time, 128)
         self.fc2_time = nn.Linear(128, step)
@@ -469,9 +471,8 @@ class FNO_multi(nn.Module):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
 
-        
+
         x = self.fc0_time(x)
-        x = self.fc0_var(x.permute(0, 2, 3, 4, 1)).permute(0, 4, 1, 2, 3)
         x = x.permute(0, 4, 1, 2, 3)
         
         
@@ -480,12 +481,13 @@ class FNO_multi(nn.Module):
         x0 = self.f0(x)
         x = self.f1(x0)
         x = self.f2(x) + x0 
-        # x1 = self.f3(x)
-        # x = self.f4(x1)
-        # x = self.f5(x) + x1 
+        # x = self.dropout(x)
+        x1 = self.f3(x)
+        x = self.f4(x1)
+        x = self.f5(x) + x1 
+        # x = self.dropout(x)
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
-
 
         x = x.permute(0, 2, 3, 4, 1)
         x = x 
@@ -493,19 +495,16 @@ class FNO_multi(nn.Module):
         x = self.fc1_time(x)
         x = F.gelu(x)
         x = self.fc2_time(x)
-
-        x = self.fc1_var(x.permute(0, 2, 3, 4, 1)).permute(0, 4, 1, 2, 3)
-
         
         return x
 
 #Using x and y values from the simulation discretisation 
     def get_grid(self, shape, device):
-        batchsize, width_vars, size_x, size_y = shape[0], shape[1], shape[2], shape[3]
+        batchsize, num_vars, size_x, size_y = shape[0], shape[1], shape[2], shape[3]
         gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
-        gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, width_vars, 1, size_y, 1])
+        gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
         gridy = torch.tensor(y_grid, dtype=torch.float)
-        gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, width_vars, size_x, 1, 1])
+        gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1).to(device)
 
 ## Arbitrary grid discretisation 
@@ -543,9 +542,9 @@ field = configuration['Field']
 dims = ['rho', 'Phi', 'T']
 num_vars = configuration['Variables']
 
-u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
-v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
+v_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
+p_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
+u_sol = np.load(data)['T'].astype(np.float32)    / 1e6
 
 u_sol = np.nan_to_num(u_sol)
 v_sol = np.nan_to_num(v_sol)
@@ -570,7 +569,7 @@ y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
 
-ntrain = 240
+ntrain =240
 ntest = 38
 S = 106 #Grid Size
 size_x = S
@@ -887,6 +886,3 @@ for output_file in OUTPUTS:
 run.close()
 
 # %%
-
-
-        
