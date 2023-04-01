@@ -10,7 +10,7 @@ Multivariable FNO
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'T, rho, Phi',
+                 "Field": 'rho, Phi, T',
                  "Field_Mixing": 'Channel',
                  "Type": '2D Time',
                  "Epochs": 500,
@@ -27,16 +27,16 @@ configuration = {"Case": 'Multi-Blobs',
                  "T_in": 10,    
                  "T_out": 40,
                  "Step": 5,
-                 "Modes":32,
-                 "Width_time":64, #FNO
+                 "Modes":16,
+                 "Width_time":32, #FNO
                  "Width_vars": 0, #U-Net
                  "Variables":3, 
                  "Noise":0.0, 
                  "Loss Function": 'LP Loss',
                  "Spatial Resolution": 1,
                  "Temporal Resolution": 1,
-                #  "UQ": 'Dropout',
-                #  "Dropout Rate": 0.9
+                 "UQ": 'Dropout',
+                 "Dropout Rate": 0.9
                  }
 
 
@@ -457,7 +457,7 @@ class FNO_multi(nn.Module):
         self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
-        # self.dropout = nn.Dropout(p=0.1)
+        self.dropout = nn.Dropout(p=0.1)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
@@ -474,18 +474,18 @@ class FNO_multi(nn.Module):
 
         x = self.fc0_time(x)
         x = x.permute(0, 4, 1, 2, 3)
-        
-        
+        x = self.dropout(x)
+
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
         x0 = self.f0(x)
         x = self.f1(x0)
         x = self.f2(x) + x0 
-        # x = self.dropout(x)
+        x = self.dropout(x)
         x1 = self.f3(x)
         x = self.f4(x1)
         x = self.f5(x) + x1 
-        # x = self.dropout(x)
+        x = self.dropout(x)
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
 
@@ -494,6 +494,7 @@ class FNO_multi(nn.Module):
 
         x = self.fc1_time(x)
         x = F.gelu(x)
+        x = self.dropout(x)
         x = self.fc2_time(x)
         
         return x
@@ -542,9 +543,9 @@ field = configuration['Field']
 dims = ['rho', 'Phi', 'T']
 num_vars = configuration['Variables']
 
-v_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
-p_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
-u_sol = np.load(data)['T'].astype(np.float32)    / 1e6
+u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
+v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
 
 u_sol = np.nan_to_num(u_sol)
 v_sol = np.nan_to_num(v_sol)

@@ -818,3 +818,151 @@ plt.legend()
 plt.xlabel('Time Steps')
 plt.ylabel('NMAE ')
 # %%
+
+#Dropout Plots
+#Cautio
+configuration = {"Case": 'Multi-Blobs',
+                 "Field": 'rho, Phi, T',
+                 "Field_Mixing": 'Channel',
+                 "Type": '2D Time',
+                 "Epochs": 500,
+                 "Batch Size": 10,
+                 "Optimizer": 'Adam',
+                 "Learning Rate": 0.005,
+                 "Scheduler Step": 100,
+                 "Scheduler Gamma": 0.5,
+                 "Activation": 'GELU',
+                 "Normalisation Strategy": 'Min-Max',
+                 "Instance Norm": 'No',
+                 "Log Normalisation":  'No',
+                 "Physics Normalisation": 'Yes',
+                 "T_in": 10,    
+                 "T_out": 40,
+                 "Step": 5,
+                 "Modes":32,
+                 "Width_time":64, #FNO
+                 "Width_vars": 0, #U-Net
+                 "Variables":3, 
+                 "Noise":0.0, 
+                 "Loss Function": 'LP Loss',
+                 "Spatial Resolution": 1,
+                 "Temporal Resolution": 1,
+                 "UQ": 'Dropout',
+                 "Dropout Rate": 0.9
+                 }
+
+T_in  = configuration['T_in']
+T_out = configuration['T_out']
+step = configuration['Step']
+modes = configuration['Modes']
+width_vars = configuration['Width_vars']
+width_time = configuration['Width_time']
+
+class FNO_multi_dropout(nn.Module):
+    def __init__(self, modes1, modes2, width_vars, width_time):
+        super(FNO_multi_dropout, self).__init__()
+
+        """
+        The overall network. It contains 4 layers of the Fourier layer.
+        1. Lift the input to the desire channel dimension by self.fc0 .
+        2. 4 layers of the integral operators u' = (W + K)(u).
+            W defined by self.w; K defined by self.conv .
+        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
+        
+        input: the solution of the previous T_in timesteps + 2 locations (u(t-T_in, x, y), ..., u(t-1, x, y),  x, y)
+        input shape: (batchsize, x=x_discretistion, y=y_discretisation, c=T_in)
+        output: the solution of the next timestep
+        output shape: (batchsize, x=x_discretisation, y=y_discretisatiob, c=step)
+        """
+
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.width_vars = width_vars
+        self.width_time = width_time
+
+        self.fc0_time  = nn.Linear(T_in+2, self.width_time)
+
+        # self.padding = 8 # pad the domain if input is non-periodic
+
+        self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
+
+        # self.dropout = nn.Dropout(p=0.1)
+
+        # self.norm = nn.InstanceNorm2d(self.width)
+        self.norm = nn.Identity()
+
+
+        self.fc1_time = nn.Linear(self.width_time, 128)
+        self.fc2_time = nn.Linear(128, step)
+
+
+    def forward(self, x):
+        grid = self.get_grid(x.shape, x.device)
+        x = torch.cat((x, grid), dim=-1)
+
+
+        x = self.fc0_time(x)
+        x = x.permute(0, 4, 1, 2, 3)
+        
+        
+        # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
+
+        x0 = self.f0(x)
+        x = self.f1(x0)
+        x = self.f2(x) + x0 
+        x = self.dropout(x)
+        x1 = self.f3(x)
+        x = self.f4(x1)
+        x = self.f5(x) + x1 
+        x = self.dropout(x)
+
+        # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
+
+        x = x.permute(0, 2, 3, 4, 1)
+        x = x 
+
+        x = self.fc1_time(x)
+        x = F.gelu(x)
+        x = self.fc2_time(x)
+        
+        return x
+
+#Using x and y values from the simulation discretisation 
+    def get_grid(self, shape, device):
+        batchsize, num_vars, size_x, size_y = shape[0], shape[1], shape[2], shape[3]
+        gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
+        gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
+        gridy = torch.tensor(y_grid, dtype=torch.float)
+        gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
+        return torch.cat((gridx, gridy), dim=-1).to(device)
+
+## Arbitrary grid discretisation 
+    # def get_grid(self, shape, device):
+    #     batchsize, size_x, size_y = shape[0], shape[1], shape[2]
+    #     gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
+    #     gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+    #     gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
+    #     gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+    #     return torch.cat((gridx, gridy), dim=-1).to(device)
+
+
+    def count_params(self):
+        c = 0
+        for p in self.parameters():
+            c += reduce(operator.mul, list(p.size()))
+
+        return c
+
+
+
+model = FNO_multi_dropout(modes, modes, width_vars, width_time)
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cautious-vine.pth', map_location=torch.device('cpu')))
+model.to(device)
+# %%
+
+

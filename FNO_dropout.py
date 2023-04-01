@@ -991,6 +991,24 @@ divider = make_axes_locatable(ax)
 cax = divider.append_axes("right", size="5%", pad=0.05)
 fig.colorbar(pcm, cax = cax)
 
+# %%
+
+err = []
+std = []
+for ii in range(step):
+    err.append(torch.mean(torch.abs(torch.Tensor(preds_mean[0][:,:,ii]) - yy[0][:,:,ii])))
+    std.append(torch.mean(torch.Tensor(preds_std[0][:,:,ii])))
+
+
+err = np.asarray(err)
+std = np.asarray(std)
+
+# %%
+# plt.plot(np.arange(T_in, T_in + step), err, label='Error', alpha=0.8,  color = 'tab:blue')
+plt.plot(np.arange(T_in, T_in + step), std, label='std', alpha=0.8,  color = 'tab:orange')
+plt.legend()
+plt.xlabel('Time Steps')
+plt.ylabel('NMAE ')
 
    
 # # %%
@@ -1012,3 +1030,5 @@ with torch.no_grad():
 
         xx = torch.cat((xx[..., step:], torch.FloatTensor(pred)), dim=-1)
 # %%
+
+
