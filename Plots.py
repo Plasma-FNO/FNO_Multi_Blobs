@@ -181,7 +181,7 @@ class RangeNormalizer(object):
 
 #normalization, rangewise but single value. 
 class MinMax_Normalizer(object):
-    def __init__(self, x, low=-1.0, high=1.0):
+    def __init__(self, x, low=0.0, high=1.0):
         super(MinMax_Normalizer, self).__init__()
         min_u = torch.min(x[:,0,:,:,:])
         max_u = torch.max(x[:,0,:,:,:])
@@ -542,9 +542,9 @@ class FNO_multi(nn.Module):
         self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
-        # self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
+        self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
 
         # self.norm = nn.InstanceNorm2d(self.width)
@@ -569,9 +569,9 @@ class FNO_multi(nn.Module):
         x0 = self.f0(x)
         x = self.f1(x0)
         x = self.f2(x) + x0 
-        # x1 = self.f3(x)
-        # x = self.f4(x1)
-        # x = self.f5(x) + x1 
+        x1 = self.f3(x)
+        x = self.f4(x1)
+        x = self.f5(x) + x1 
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
 
@@ -613,7 +613,9 @@ class FNO_multi(nn.Module):
 
 
 model = FNO_multi(modes, modes, width_vars, width_time)
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_strong-gloss.pth', map_location=torch.device('cpu')))
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_absolute-account.pth', map_location=torch.device('cpu'))) #32, 64
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_frigid-crescendo.pth', map_location=torch.device('cpu')))
+
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
@@ -630,7 +632,7 @@ myloss = LpLoss(size_average=False)
 # %%
 #Testing 
 batch_size = 1
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1, shuffle=False)
 pred_set = torch.zeros(test_u.shape)
 index = 0
 with torch.no_grad():
@@ -679,15 +681,22 @@ pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 # %%
 #Plotting the comparison plots
 
-idx = np.random.randint(0,ntest) 
-idx = 5
 
-if configuration['Log Normalisation'] == 'Yes':
-    test_u = torch.exp(test_u)
-    pred_set = torch.exp(pred_set)
+pred_set[:,0:1,...] = pred_set[:,0:1,...] * 1e20
+pred_set[:,1:2,...] = pred_set[:,1:2,...] * 1e6
+pred_set[:,2:3,...] = pred_set[:,2:3,...] * 1e5
 
+
+test_u[:,0:1,...] = test_u[:,0:1,...] * 1e20
+test_u[:,1:2,...] = test_u[:,1:2,...] * 1e6
+test_u[:,2:3,...] = test_u[:,2:3,...] * 1e5
 
 # %%
+
+idx = np.random.randint(0,ntest) 
+idx = 24
+print(idx)
+
 output_plot = []
 for dim in range(num_vars):
     u_field = test_u[idx]
@@ -751,8 +760,8 @@ for dim in range(num_vars):
 
     plt.title(dims[dim])
 
-    output_plot.append(file_loc + '/Plots/MultiBlobs_' + dims[dim] + '_' + run.name + '.png')
-    plt.savefig(output_plot[dim])
+    # output_plot.append(file_loc + '/Plots/MultiBlobs_' + dims[dim] + '_' + run.name + '.png')
+    # plt.savefig(output_plot[dim])
 
 # %%
 
@@ -820,7 +829,7 @@ plt.ylabel('NMAE ')
 # %%
 
 #Dropout Plots
-#Cautio
+#Cyan-Provolone
 configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
                  "Field_Mixing": 'Channel',
@@ -839,8 +848,8 @@ configuration = {"Case": 'Multi-Blobs',
                  "T_in": 10,    
                  "T_out": 40,
                  "Step": 5,
-                 "Modes":32,
-                 "Width_time":64, #FNO
+                 "Modes":16,
+                 "Width_time":32, #FNO
                  "Width_vars": 0, #U-Net
                  "Variables":3, 
                  "Noise":0.0, 
@@ -857,6 +866,7 @@ step = configuration['Step']
 modes = configuration['Modes']
 width_vars = configuration['Width_vars']
 width_time = configuration['Width_time']
+
 
 class FNO_multi_dropout(nn.Module):
     def __init__(self, modes1, modes2, width_vars, width_time):
@@ -891,7 +901,7 @@ class FNO_multi_dropout(nn.Module):
         self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
-        # self.dropout = nn.Dropout(p=0.1)
+        self.dropout = nn.Dropout(p=0.1)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
@@ -908,8 +918,8 @@ class FNO_multi_dropout(nn.Module):
 
         x = self.fc0_time(x)
         x = x.permute(0, 4, 1, 2, 3)
-        
-        
+        x = self.dropout(x)
+
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
         x0 = self.f0(x)
@@ -928,6 +938,7 @@ class FNO_multi_dropout(nn.Module):
 
         x = self.fc1_time(x)
         x = F.gelu(x)
+        x = self.dropout(x)
         x = self.fc2_time(x)
         
         return x
@@ -958,11 +969,285 @@ class FNO_multi_dropout(nn.Module):
 
         return c
 
-
-
 model = FNO_multi_dropout(modes, modes, width_vars, width_time)
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cautious-vine.pth', map_location=torch.device('cpu')))
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cyan-provolone.pth', map_location=torch.device('cpu')))
 model.to(device)
+
+
+
+# %%
+#Extracting the Mean and Variance across the time roll out to plot later. 
+
+# %%
+idx = 36
+model.eval()
+xx = test_a[idx:idx+1]
+yy = test_u_encoded[idx:idx+1,:, :,:,:10]
+var = 0 
+preds = []
+
+for i in tqdm(range(100)):
+        preds.append(model(xx).detach().numpy())
+
+preds_mean = np.mean(preds, axis=0)
+preds_std = np.std(preds, axis=0)
+# %%
+test_yy= y_normalizer.decode(torch.Tensor(yy)) * 1e20
+preds_mean = y_normalizer.decode(torch.Tensor(preds_mean)).detach().numpy() * 1e20
+preds_std= y_normalizer.decode(torch.Tensor(preds_std)).detach().numpy() * 1e20
+
+
+T = step
+
+u_field = test_yy[0][var]
+
+v_min_1 = torch.min(u_field[:,:,0])
+v_max_1 = torch.max(u_field[:,:,0])
+
+v_min_2 = torch.min(u_field[:, :, int(T/2)])
+v_max_2 = torch.max(u_field[:, :, int(T/2)])
+
+v_min_3 = torch.min(u_field[:, :, -1])
+v_max_3 = torch.max(u_field[:, :, -1])
+
+fig = plt.figure(figsize=plt.figaspect(0.5))
+ax = fig.add_subplot(2,3,1)
+pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# ax.title.set_text('Initial')
+ax.title.set_text('t='+ str(T_in))
+ax.set_ylabel('Solution')
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,2)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# ax.title.set_text('Middle')
+ax.title.set_text('t='+ str(int((T/2+T_in))))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,3)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# ax.title.set_text('Final')
+ax.title.set_text('t='+str(T+T_in))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+u_field = preds_mean[0][var]
+
+ax = fig.add_subplot(2,3,4)
+pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+ax.set_ylabel('FNO')
+
+fig.colorbar(pcm, pad=0.05)
+
+ax = fig.add_subplot(2,3,5)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,6)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+u_field = preds_std[0][var]
+
+v_min_1 = np.min(u_field[:,:,0])
+v_max_1 = np.max(u_field[:,:,0])
+
+v_min_2 = np.min(u_field[:, :, int(T/2)])
+v_max_2 = np.max(u_field[:, :, int(T/2)])
+
+v_min_3 = np.min(u_field[:, :, -1])
+v_max_3 = np.max(u_field[:, :, -1])
+
+fig = plt.figure(figsize=plt.figaspect(0.4))
+ax = fig.add_subplot(1,3,1)
+pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# ax.title.set_text('Initial')
+ax.title.set_text('t='+ str(T_in))
+ax.set_ylabel('STD')
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+fig.colorbar(pcm, cax = cax)
+
+
+ax = fig.add_subplot(1,3,2)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# ax.title.set_text('Middle')
+ax.title.set_text('t='+ str(int((T/2+T_in))))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+fig.colorbar(pcm, cax = cax)
+
+
+ax = fig.add_subplot(1,3,3)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# ax.title.set_text('Final')
+ax.title.set_text('t='+str(T+T_in))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+fig.colorbar(pcm, cax = cax)
+
+# %%
+idx = 36
+model.eval()
+xx = test_a[idx:idx+1]
+yy = test_u_encoded[idx:idx+1]
+preds = []
+with torch.no_grad():
+    for i in tqdm(range(100)):
+        xx = test_a[idx:idx+1]
+        for t in range(0, T, step):
+            out = model(xx)
+
+            if t == 0:
+                pred = out
+            else:
+                pred = torch.cat((pred, out), -1)       
+
+            xx = torch.cat((xx[..., step:], out), dim=-1)
+        preds.append(pred.detach().numpy())
+
+
+
+# %%
+preds_mean = np.mean(preds, axis=0)
+preds_std = np.std(preds, axis=0)
+# %%
+test_yy = y_normalizer.decode(torch.Tensor(yy)) * 1e20
+preds_mean = y_normalizer.decode(torch.Tensor(preds_mean)).detach().numpy() * 1e20
+preds_std= y_normalizer.decode(torch.Tensor(preds_std)).detach().numpy() * 1e20
+
 # %%
 
+T = configuration['T_out']
+T = 20
 
+u_field = test_yy[0][var][...,:20]
+
+v_min_1 = torch.min(u_field[:,:,0])
+v_max_1 = torch.max(u_field[:,:,0])
+
+v_min_2 = torch.min(u_field[:, :, int(T/2)])
+v_max_2 = torch.max(u_field[:, :, int(T/2)])
+
+v_min_3 = torch.min(u_field[:, :, -1])
+v_max_3 = torch.max(u_field[:, :, -1])
+
+fig = plt.figure(figsize=plt.figaspect(0.5))
+ax = fig.add_subplot(2,3,1)
+pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# ax.title.set_text('Initial')
+ax.title.set_text('t='+ str(T_in))
+ax.set_ylabel('Solution')
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,2)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# ax.title.set_text('Middle')
+ax.title.set_text('t='+ str(int((T/2+T_in))))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,3)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# ax.title.set_text('Final')
+ax.title.set_text('t='+str(T+T_in))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+u_field = preds_mean[0][var]
+
+ax = fig.add_subplot(2,3,4)
+pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+ax.set_ylabel('FNO')
+
+fig.colorbar(pcm, pad=0.05)
+
+ax = fig.add_subplot(2,3,5)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+ax = fig.add_subplot(2,3,6)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
+
+
+
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+u_field = preds_std[0][var]
+
+v_min_1 = np.min(u_field[:,:,0])
+v_max_1 = np.max(u_field[:,:,0])
+
+v_min_2 = np.min(u_field[:, :, int(T/2)])
+v_max_2 = np.max(u_field[:, :, int(T/2)])
+
+v_min_3 = np.min(u_field[:, :, -1])
+v_max_3 = np.max(u_field[:, :, -1])
+
+fig = plt.figure(figsize=plt.figaspect(0.4))
+ax = fig.add_subplot(1,3,1)
+pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# ax.title.set_text('Initial')
+ax.title.set_text('t='+ str(T_in))
+ax.set_ylabel('STD')
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+fig.colorbar(pcm, cax = cax)
+
+
+ax = fig.add_subplot(1,3,2)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# ax.title.set_text('Middle')
+ax.title.set_text('t='+ str(int((T/2+T_in))))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+fig.colorbar(pcm, cax = cax)
+
+
+ax = fig.add_subplot(1,3,3)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# ax.title.set_text('Final')
+ax.title.set_text('t='+str(T+T_in))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+fig.colorbar(pcm, cax = cax)
+
+# %%

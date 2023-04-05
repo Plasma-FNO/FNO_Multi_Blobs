@@ -35,8 +35,8 @@ configuration = {"Case": 'Multi-Blobs',
                  "Loss Function": 'LP Loss',
                  "Spatial Resolution": 1,
                  "Temporal Resolution": 1,
-                 "UQ": 'Dropout',
-                 "Dropout Rate": 0.9
+                #  "UQ": 'Dropout',
+                #  "Dropout Rate": 0.9
                  }
 
 
@@ -457,7 +457,7 @@ class FNO_multi(nn.Module):
         self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
         self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
 
-        self.dropout = nn.Dropout(p=0.1)
+        # self.dropout = nn.Dropout(p=0.1)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
@@ -474,18 +474,18 @@ class FNO_multi(nn.Module):
 
         x = self.fc0_time(x)
         x = x.permute(0, 4, 1, 2, 3)
-        x = self.dropout(x)
+        # x = self.dropout(x)
 
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
         x0 = self.f0(x)
         x = self.f1(x0)
         x = self.f2(x) + x0 
-        x = self.dropout(x)
+        # x = self.dropout(x)
         x1 = self.f3(x)
         x = self.f4(x1)
         x = self.f5(x) + x1 
-        x = self.dropout(x)
+        # x = self.dropout(x)
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
 
@@ -494,7 +494,7 @@ class FNO_multi(nn.Module):
 
         x = self.fc1_time(x)
         x = F.gelu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
         x = self.fc2_time(x)
         
         return x
@@ -722,7 +722,7 @@ torch.save(model.state_dict(),  model_loc)
 # %%
 #Testing 
 batch_size = 1
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1, shuffle=False)
 pred_set = torch.zeros(test_u.shape)
 index = 0
 with torch.no_grad():
