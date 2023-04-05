@@ -502,7 +502,7 @@ t2 = default_timer()
 print('Conformal by Residual, time used:', t2-t1)
 
 # %% 
-
+soln_vals = y_normalizer.decode(torch.Tensor(y_response)) * 1e20 
 mean_vals = y_normalizer.decode(torch.Tensor(mean)) * 1e20 
 lower_vals = y_normalizer.decode(torch.Tensor(prediction_sets[0])) * 1e20 
 upper_vals = y_normalizer.decode(torch.Tensor(prediction_sets[1])) * 1e20 
@@ -530,7 +530,7 @@ def calibrate(alpha):
     y_response = pred_u.numpy()
 
     with torch.no_grad():
-        xx = pred_a
+        xx = cal_a
         for tt in tqdm(range(0, T, step)):
             out = model(xx)
             if tt == 0:
@@ -545,7 +545,7 @@ def calibrate(alpha):
     qhat = np.quantile(cal_scores, np.ceil((n+1)*(1-alpha))/n, axis = 0, interpolation='higher')
 
     prediction_sets =  [mean - qhat, mean + qhat]
-    empirical_coverage = ((y_response >= prediction_sets[0]) & (y_response <= prediction_sets[1])).mean()
+    empirical_coverage = ((y_response >= prediction_sets[0].numpy()) & (y_response <= prediction_sets[1].numpy())).mean()
     return empirical_coverage
 
 
@@ -562,27 +562,27 @@ plt.ylabel('Empirical Coverage')
 plt.legend()
 
 # %% 
-x_pos = 80
-tt = 10
+x_pos = 5
+time = 20
 var = 0 
 plt.figure()
 plt.plot(y_grid,mean_vals[idx, var, x_pos, :, time], label='Prediction', alpha=0.8,  color = 'tab:blue')
 plt.plot(y_grid,lower_vals[idx, var, x_pos, :, time], label='Lower', alpha=0.8,  color = 'tab:orange', ls='--')
 plt.plot(y_grid, upper_vals[idx, var, x_pos, :, time], label='Upper', alpha=0.8,  color = 'tab:green', ls='--')
-# plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'tab:red', ls='--')
+plt.plot(y_grid, soln_vals[idx, var, x_pos, :, time], label='Solution', alpha=0.8,  color = 'tab:red')
 plt.legend()
 plt.xlabel('Z-Axis')
 plt.ylabel('Density')# %%
 
 # %%
-y_pos = 100
-tt = 10
+y_pos = 40
+time = 20
 var = 0 
 plt.figure()
 plt.plot(x_grid,mean_vals[idx, var, :, y_pos, time], label='Prediction', alpha=0.8,  color = 'tab:blue')
 plt.plot(x_grid,lower_vals[idx, var, :, y_pos, time], label='Lower', alpha=0.8,  color = 'tab:orange', ls='--')
 plt.plot(x_grid, upper_vals[idx, var,:, y_pos, time], label='Upper', alpha=0.8,  color = 'tab:green', ls='--')
-# plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'tab:red', ls='--')
+plt.plot(x_grid, soln_vals[idx, var,:, y_pos, time], label='Solution', alpha=0.8,  color = 'tab:red')
 plt.legend()
 plt.xlabel('R-Axis')
 plt.ylabel('Density')# %%
