@@ -27,7 +27,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "T_in": 10,    
                  "T_out": 40,
                  "Step": 5,
-                 "Modes":16,
+                 "Modes": 32.1,
                  "Width_time":32, #FNO
                  "Width_vars": 0, #U-Net
                  "Variables":3, 
@@ -43,7 +43,20 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Decreasing Modes"], metadata=configuration)
+
+# %% 
+CODE = ['FNO_multiple.py']
+
+# Save code files
+for code_file in CODE:
+    if os.path.isfile(code_file):
+        run.save(code_file, 'code')
+    elif os.path.isdir(code_file):
+        run.save_directory(code_file, 'code', 'text/plain', preserve_path=True)
+    else:
+        print('ERROR: code file %s does not exist' % code_file)
+
 
 # %% 
 
@@ -321,7 +334,7 @@ size_x = S
 size_y = S
 
 
-modes = configuration['Modes']
+# modes = configuration['Modes']
 width_time = configuration['Width_time']
 width_vars = configuration['Width_vars']
 output_size = configuration['Step']
@@ -450,12 +463,19 @@ class FNO_multi(nn.Module):
 
         # self.padding = 8 # pad the domain if input is non-periodic
 
-        self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
+        # self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
+
+        self.f0 = FNO2d(32, 32, self.width_time)
+        self.f1 = FNO2d(32, 16, self.width_time)
+        self.f2 = FNO2d(16, 8, self.width_time)
+        self.f3 = FNO2d(8, 4, self.width_time)
+        self.f4 = FNO2d(4, 2, self.width_time)
+        self.f5 = FNO2d(2, 1, self.width_time)
 
         # self.dropout = nn.Dropout(p=0.1)
 
@@ -479,12 +499,13 @@ class FNO_multi(nn.Module):
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
         x0 = self.f0(x)
-        x = self.f1(x0)
+        x = self.f1(x)
         x = self.f2(x) + x0 
         # x = self.dropout(x)
         x1 = self.f3(x)
-        x = self.f4(x1)
+        x = self.f4(x)
         x = self.f5(x) + x1 
+
         # x = self.dropout(x)
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
@@ -623,7 +644,7 @@ print('preprocessing finished, time used:', t2-t1)
 ################################################################
 # training and evaluation
 ################################################################
-
+modes = 32
 model = FNO_multi(modes, modes, width_vars, width_time)
 model.to(device)
 
@@ -851,18 +872,8 @@ for dim in range(num_vars):
 
 # %%
 
-CODE = ['FNO_multiple.py']
 INPUTS = []
 OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
-
-# Save code files
-for code_file in CODE:
-    if os.path.isfile(code_file):
-        run.save(code_file, 'code')
-    elif os.path.isdir(code_file):
-        run.save_directory(code_file, 'code', 'text/plain', preserve_path=True)
-    else:
-        print('ERROR: code file %s does not exist' % code_file)
 
 
 # Save input files
