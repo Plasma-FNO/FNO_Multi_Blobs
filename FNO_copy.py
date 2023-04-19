@@ -1,19 +1,15 @@
-          
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on 6 Jan 2023
 @author: vgopakum
 FNO modelled over the MHD data built using JOREK for multi-blob diffusion. 
-
-Multivariable FNO
 """
 # %%
-configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'rho, Phi, T',
-                 "Field_Mixing": 'Channel',
-                 "Type": '2D Time',
-                 "Epochs": 500,
+configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
+                 "Field": 'T', #Variable we are modelling - Phi, rho, T
+                 "Type": '2D Time', #FNO Architecture
+                 "Epochs": 500, 
                  "Batch Size": 10,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.005,
@@ -21,33 +17,28 @@ configuration = {"Case": 'Multi-Blobs',
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
-                 "Instance Norm": 'No',
+                 "Instance Norm": 'No', #Layerwise Normalisation
                  "Log Normalisation":  'No',
-                 "Physics Normalisation": 'Yes',
-                 "T_in": 10,    
-                 "T_out": 40,
-                 "Step": 5,
-                 "Modes": 16,
-                 "Width_time":32, #FNO
-                 "Width_vars": 0, #U-Net
-                 "Variables":3, 
-                 "Noise":0.0, 
-                 "Loss Function": 'LP Loss',
-                 "Spatial Resolution": 1,
-                 "Temporal Resolution": 1,
-                #  "UQ": 'Dropout',
-                #  "Dropout Rate": 0.9
+                 "Physics Normalisation": 'Yes', #Normalising the Variable 
+                 "T_in": 10, #Input time steps
+                 "T_out": 40, #Max simulation time
+                 "Step": 5, #Time steps output in each forward call
+                 "Modes": 16, #Number of Fourier Modes
+                 "Width": 32, #Features of the Convolutional Kernel
+                 "Variables": 1, 
+                 "Noise": 0.0, 
+                 "Loss Function": 'LP Loss' #Choice of Loss Function
                  }
 
-
-# %%
+# %% 
+#Simvue Setup. If not using comment out this section and anything with run
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Decreasing Modes"], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs'], metadata=configuration)
 
 # %% 
 import os 
-CODE = ['FNO_multiple.py']
+CODE = ['FNO_copy.py']
 
 # Save code files
 for code_file in CODE:
@@ -58,9 +49,8 @@ for code_file in CODE:
     else:
         print('ERROR: code file %s does not exist' % code_file)
 
-
-# %% 
-
+# %%
+#Importing the necessary packages. 
 import numpy as np
 from tqdm import tqdm 
 import torch
@@ -73,7 +63,6 @@ from matplotlib import cm
 import operator
 from functools import reduce
 from functools import partial
-from collections import OrderedDict
 
 import time 
 from timeit import default_timer
@@ -83,13 +72,16 @@ torch.manual_seed(0)
 np.random.seed(0)
 
 # %% 
+#Setting up the directories - data location, model location and plots. 
 path = os.getcwd()
 data_loc = os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))
 # model_loc = os.path.dirname(os.path.dirname(os.getcwd()))
 file_loc = os.getcwd()
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+# %%
+#Setting up CUDA
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 # %%
@@ -136,7 +128,7 @@ class UnitGaussianNormalizer(object):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
 
-# normalization, Gaussian
+# normalization, Gaussian - across the entire dataset
 class GaussianNormalizer(object):
     def __init__(self, x, eps=0.00001):
         super(GaussianNormalizer, self).__init__()
@@ -162,7 +154,7 @@ class GaussianNormalizer(object):
         self.std = self.std.cpu()
 
 
-# normalization, scaling by range
+# normalization, scaling by range - pointwise
 class RangeNormalizer(object):
     def __init__(self, x, low=-1.0, high=1.0):
         super(RangeNormalizer, self).__init__()
@@ -194,84 +186,6 @@ class RangeNormalizer(object):
     def cpu(self):
         self.a = self.a.cpu()
         self.b = self.b.cpu()
-
-# #normalization, rangewise but single value. 
-# class MinMax_Normalizer(object):
-#     def __init__(self, x, low=0.0, high=1.0):
-#         super(MinMax_Normalizer, self).__init__()
-#         min_u = torch.min(x[:,0,:,:,:])
-#         max_u = torch.max(x[:,0,:,:,:])
-
-#         self.a_u = (high - low)/(max_u - min_u)
-#         self.b_u = -self.a_u*max_u + high
-
-#         min_v = torch.min(x[:,1,:,:,:])
-#         max_v = torch.max(x[:,1,:,:,:])
-
-#         self.a_v = (high - low)/(max_v - min_v)
-#         self.b_v = -self.a_v*max_v + high
-
-#         min_p = torch.min(x[:,2,:,:,:])
-#         max_p = torch.max(x[:,2,:,:,:])
-
-#         self.a_p = (high - low)/(max_p - min_p)
-#         self.b_p = -self.a_p*max_p + high
-        
-
-#     def encode(self, x):
-#         s = x.size()
-
-#         u = x[:,0,:,:,:]
-#         u = self.a_u*u + self.b_u
-
-#         v = x[:,1,:,:,:]
-#         v = self.a_v*v + self.b_v
-
-#         p = x[:,2,:,:,:]
-#         p = self.a_p*p + self.b_p
-        
-#         x = torch.stack((u,v,p), dim=1)
-
-#         return x
-
-#     def decode(self, x):
-#         s = x.size()
-
-#         u = x[:,0,:,:,:]
-#         u = (u - self.b_u)/self.a_u
-        
-#         v = x[:,1,:,:,:]
-#         v = (v - self.b_v)/self.a_v
-
-#         p = x[:,2,:,:,:]
-#         p = (p - self.b_p)/self.a_p
-
-
-#         x = torch.stack((u,v,p), dim=1)
-
-#         return x
-
-#     def cuda(self):
-#         self.a_u = self.a_u.cuda()
-#         self.b_u = self.b_u.cuda()
-        
-#         self.a_v = self.a_v.cuda()
-#         self.b_v = self.b_v.cuda() 
-
-#         self.a_p = self.a_p.cuda()
-#         self.b_p = self.b_p.cuda()
-
-
-#     def cpu(self):
-#         self.a_u = self.a_u.cpu()
-#         self.b_u = self.b_u.cpu()
-        
-#         self.a_v = self.a_v.cpu()
-#         self.b_v = self.b_v.cpu()
-
-#         self.a_p = self.a_p.cpu()
-#         self.b_p = self.b_p.cpu()
-
 
 #normalization, rangewise but across the full domain 
 class MinMax_Normalizer(object):
@@ -357,52 +271,27 @@ class LpLoss(object):
     def __call__(self, x, y):
         return self.rel(x, y)
 
-
-# %% 
-x_grid = np.arange(0, 106)
-y_grid = np.arange(0, 106)
-S = 106 #Grid Size
-size_x = S
-size_y = S
-
-
-modes = configuration['Modes']
-width_time = configuration['Width_time']
-width_vars = configuration['Width_vars']
-output_size = configuration['Step']
-
-batch_size = configuration['Batch Size']
-
-batch_size2 = batch_size
-
-t1 = default_timer()
-
-T_in = configuration['T_in']
-T = configuration['T_out']
-step = configuration['Step']
-num_vars = configuration['Variables']
-
-
-
 # %%
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-# %%
-
-class MLP(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels):
-        super(MLP, self).__init__()
-        self.mlp1 = nn.Conv2d(in_channels, mid_channels, 1)
-        self.mlp2 = nn.Conv2d(mid_channels, out_channels, 1)
-
-    def forward(self, x):
-        x = self.mlp1(x)
-        x = F.gelu(x)
-        x = self.mlp2(x)
-        return x
-
+# #Adding Gaussian Noise to the training dataset
+# class AddGaussianNoise(object):
+#     def __init__(self, mean=0., std=1.):
+#         self.mean = torch.FloatTensor([mean])
+#         self.std = torch.FloatTensor([std])
+        
+#     def __call__(self, tensor):
+#         return tensor + torch.randn(tensor.size()).cuda() * self.std + self.mean
+    
+#     def __repr__(self):
+#         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+#     def cuda(self):
+#         self.mean = self.mean.cuda()
+#         self.std = self.std.cuda()
+#     def cpu(self):
+#         self.mean = self.mean.cpu()
+#         self.std = self.std.cpu()
+# # additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
+# additive_noise.cuda()
 # %%
 ################################################################
 # fourier layer
@@ -421,33 +310,33 @@ class SpectralConv2d(nn.Module):
         self.modes2 = modes2
 
         self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
 
     # Complex multiplication
     def compl_mul2d(self, input, weights):
         # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
-        return torch.einsum("bivxy,iovxy->bovxy", input, weights)
+        return torch.einsum("bixy,ioxy->boxy", input, weights)
 
     def forward(self, x):
         batchsize = x.shape[0]
         #Compute Fourier coeffcients up to factor of e^(- something constant)
         x_ft = torch.fft.rfft2(x)
 
-        # Multiply relevant Fourier modes 
-        out_ft = torch.zeros(batchsize, self.out_channels, num_vars,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
-        out_ft[:, :, :, :self.modes1, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, :, :self.modes1, :self.modes2], self.weights1)
-        out_ft[:, :, :, -self.modes1:, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, :, -self.modes1:, :self.modes2], self.weights2)
+        # Multiply relevant Fourier modes
+        out_ft = torch.zeros(batchsize, self.out_channels,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
+        out_ft[:, :, :self.modes1, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
+        out_ft[:, :, -self.modes1:, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
 
         #Return to physical space
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
 
-class FNO2d(nn.Module):
+class Fourier_Layer(nn.Module):
     def __init__(self, modes1, modes2, width):
-        super(FNO2d, self).__init__()
+        super(Fourier_Layer, self).__init__()
 
 
         self.modes1 = modes1
@@ -455,7 +344,7 @@ class FNO2d(nn.Module):
         self.width = width
 
         self.conv = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.w = nn.Conv3d(self.width, self.width, 1)
+        self.w = nn.Conv2d(self.width, self.width, 1)
     
     
     def forward(self, x):
@@ -469,9 +358,9 @@ class FNO2d(nn.Module):
 
 # %%
 
-class FNO_multi(nn.Module):
-    def __init__(self, modes1, modes2, width_vars, width_time):
-        super(FNO_multi, self).__init__()
+class FNO(nn.Module):
+    def __init__(self, modes1, modes2, width):
+        super(FNO, self).__init__()
 
         """
         The overall network. It contains 4 layers of the Fourier layer.
@@ -488,26 +377,18 @@ class FNO_multi(nn.Module):
 
         self.modes1 = modes1
         self.modes2 = modes2
-        self.width_vars = width_vars
-        self.width_time = width_time
+        self.width= width
 
-        self.fc0_time  = nn.Linear(T_in+2, self.width_time)
+        self.fc0 = nn.Linear(T_in+2, self.width)
 
         # self.padding = 8 # pad the domain if input is non-periodic
 
-        self.f0 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f1 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f2 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f3 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f4 = FNO2d(self.modes1, self.modes2, self.width_time)
-        self.f5 = FNO2d(self.modes1, self.modes2, self.width_time)
-
-        # self.f0 = FNO2d(32, 32, self.width_time)
-        # self.f1 = FNO2d(32, 16, self.width_time)
-        # self.f2 = FNO2d(16, 8, self.width_time)
-        # self.f3 = FNO2d(8, 4, self.width_time)
-        # self.f4 = FNO2d(4, 2, self.width_time)
-        # self.f5 = FNO2d(2, 1, self.width_time)
+        self.f0 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f1 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f2 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f3 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f4 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f5 = Fourier_Layer(self.modes1, self.modes2, self.width)
 
         # self.dropout = nn.Dropout(p=0.1)
 
@@ -515,17 +396,16 @@ class FNO_multi(nn.Module):
         self.norm = nn.Identity()
 
 
-        self.fc1_time = nn.Linear(self.width_time, 128)
-        self.fc2_time = nn.Linear(128, step)
+        self.fc1 = nn.Linear(self.width, 128)
+        self.fc2 = nn.Linear(128, step)
 
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
 
-
-        x = self.fc0_time(x)
-        x = x.permute(0, 4, 1, 2, 3)
+        x = self.fc0(x)
+        x = x.permute(0, 3, 1, 2)
         # x = self.dropout(x)
 
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
@@ -542,23 +422,23 @@ class FNO_multi(nn.Module):
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
 
-        x = x.permute(0, 2, 3, 4, 1)
+        x = x.permute(0, 2, 3, 1)
         x = x 
 
-        x = self.fc1_time(x)
+        x = self.fc1(x)
         x = F.gelu(x)
         # x = self.dropout(x)
-        x = self.fc2_time(x)
+        x = self.fc2(x)
         
         return x
 
 #Using x and y values from the simulation discretisation 
     def get_grid(self, shape, device):
-        batchsize, num_vars, size_x, size_y = shape[0], shape[1], shape[2], shape[3]
+        batchsize, size_x, size_y = shape[0], shape[1], shape[2]
         gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
-        gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
+        gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
         gridy = torch.tensor(y_grid, dtype=torch.float)
-        gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
+        gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1).to(device)
 
 ## Arbitrary grid discretisation 
@@ -578,9 +458,6 @@ class FNO_multi(nn.Module):
 
         return c
 
-# model = FU_Net(modes, modes, width_vars, width_time)
-# model(torch.ones(5, 3, 106, 106, T_in)).shape
-
 
 # %%
 
@@ -593,132 +470,138 @@ data = data_loc + '/Data/MHD_multi_blobs.npz'
 
 # %%
 field = configuration['Field']
-dims = ['rho', 'Phi', 'T']
-num_vars = configuration['Variables']
+if field == 'Phi':
+    u_sol = np.load(data)['Phi'].astype(np.float32)   / 1e5
+elif field == 'T':
+    u_sol = np.load(data)['T'].astype(np.float32)     / 1e6
+elif field == 'rho':
+    u_sol = np.load(data)['rho'].astype(np.float32)   / 1e20
 
-u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
-v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
+if configuration['Log Normalisation'] == 'Yes':
+    u_sol = np.log(u_sol)
 
 u_sol = np.nan_to_num(u_sol)
-v_sol = np.nan_to_num(v_sol)
-p_sol = np.nan_to_num(p_sol)
-
-u = torch.from_numpy(u_sol)
-u = u.permute(0, 2, 3, 1)
-
-v = torch.from_numpy(v_sol)
-v = v.permute(0, 2, 3, 1)
-
-p = torch.from_numpy(p_sol)
-p = p.permute(0, 2, 3, 1)
-
-t_res = configuration['Temporal Resolution']
-x_res = configuration['Spatial Resolution']
-uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
-
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
-
-ntrain =240
+ntrain = 240
 ntest = 38
-S = 106 #Grid Size
-size_x = S
-size_y = S
+S = 106 #Grid Size 
 
+#Extracting hyperparameters from the config dict
+modes = configuration['Modes']
+width = configuration['Width']
+output_size = configuration['Step']
 batch_size = configuration['Batch Size']
-
-batch_size2 = batch_size
+T_in = configuration['T_in']
+T = configuration['T_out']
+step = configuration['Step']
 
 t1 = default_timer()
 
+np.random.shuffle(u_sol)
+u = torch.from_numpy(u_sol)
+u = u.permute(0, 2, 3, 1)
 
+#At this stage the data needs to be [Batch_Size, X, Y, T]
 
-train_a = uvp[:ntrain,:,:,:,:T_in]
-train_u = uvp[:ntrain,:,:,:,T_in:T+T_in]
+train_a = u[:ntrain,:,:,:T_in]
+train_u = u[:ntrain,:,:,T_in:T+T_in]
 
-test_a = uvp[-ntest:,:,:,:,:T_in]
-test_u = uvp[-ntest:,:,:,:,T_in:T+T_in]
+test_a = u[-ntest:,:,:,:T_in]
+test_u = u[-ntest:,:,:,T_in:T+T_in]
 
 print(train_u.shape)
 print(test_u.shape)
 
-
 # %%
-# a_normalizer = RangeNormalizer(train_a)
-a_normalizer = MinMax_Normalizer(train_a)
-# a_normalizer = GaussianNormalizer(train_a)
+#Normalising the train and test datasets with the preferred normalisation. 
+
+norm_strategy = configuration['Normalisation Strategy']
+
+if norm_strategy == 'Min-Max':
+    a_normalizer = MinMax_Normalizer(train_a)
+    y_normalizer = MinMax_Normalizer(train_u)
+
+if norm_strategy == 'Range':
+    a_normalizer = RangeNormalizer(train_a)
+    y_normalizer = RangeNormalizer(train_u)
+
+if norm_strategy == 'Gaussian':
+    a_normalizer = GaussianNormalizer(train_a)
+    y_normalizer = GaussianNormalizer(train_u)
+
+
 
 train_a = a_normalizer.encode(train_a)
 test_a = a_normalizer.encode(test_a)
 
-# y_normalizer = RangeNormalizer(train_u)
-y_normalizer = MinMax_Normalizer(train_u)
-# y_normalizer = GaussianNormalizer(train_u)
-
 train_u = y_normalizer.encode(train_u)
 test_u_encoded = y_normalizer.encode(test_u)
 
-
 # %%
+#Setting up the dataloaders for the test and train datasets. 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
 
 t2 = default_timer()
 print('preprocessing finished, time used:', t2-t1)
 
-
-# %% 
+# %%
 
 ################################################################
 # training and evaluation
 ################################################################
-model = FNO_multi(modes, modes, width_vars, width_time)
+
+#Instantiating the Model. 
+model = FNO(modes, modes, width)
+# model = model.double()
+# model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
-
-
 print("Number of model params : " + str(model.count_params()))
 
+#Setting up the optimisation schedule. 
 optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
 myloss = LpLoss(size_average=False)
 
-# %%
 epochs = configuration['Epochs']
 if torch.cuda.is_available():
     y_normalizer.cuda()
 
 # %%
+#Training Loop
 start_time = time.time()
-for ep in tqdm(range(epochs)):
+for ep in tqdm(range(epochs)): #Training Loop - Epochwise
     model.train()
     t1 = default_timer()
     train_l2_step = 0
     train_l2_full = 0
-    for xx, yy in train_loader:
+    for xx, yy in train_loader: #Training Loop - Batchwise
         optimizer.zero_grad()
         loss = 0
         xx = xx.to(device)
         yy = yy.to(device)
         # xx = additive_noise(xx)
-
-        for t in range(0, T, step):
+        
+        for t in range(0, T, step): #Training Loop - Time rollouts. 
             y = yy[..., t:t + step]
             im = model(xx)
-            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-            # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
+            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1)) 
+            # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1))) #normalising with log
 
+            #Storing the rolled out outputs. 
             if t == 0:
                 pred = im
             else:
                 pred = torch.cat((pred, im), -1)
 
+            #Preparing the autoregressive input for the next time step. 
             xx = torch.cat((xx[..., step:], im), dim=-1)
 
         train_l2_step += loss.item()
@@ -726,9 +609,10 @@ for ep in tqdm(range(epochs)):
         train_l2_full += l2_full.item()
 
         loss.backward()
-        # l2_full.backward()
+        # train_l2_full.backward()
         optimizer.step()
 
+#Validation Loop
     test_l2_step = 0
     test_l2_full = 0
     with torch.no_grad():
@@ -741,6 +625,7 @@ for ep in tqdm(range(epochs)):
                 y = yy[..., t:t + step]
                 im = model(xx)
                 loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
                 if t == 0:
                     pred = im
@@ -752,8 +637,7 @@ for ep in tqdm(range(epochs)):
             # pred = y_normalizer.decode(pred)
 
             test_l2_step += loss.item()
-            l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
-            test_l2_full += l2_full.item()
+            test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
 
     t2 = default_timer()
     scheduler.step()
@@ -788,6 +672,7 @@ with torch.no_grad():
             y = yy[..., t:t + step]
             out = model(xx)
             loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            # loss += myloss(out.reshape(batch_size, -1)*torch.log(out.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
 
             if t == 0:
                 pred = out
@@ -802,8 +687,7 @@ with torch.no_grad():
         index += 1
         print(t2-t1)
 
-# %% 
-print(pred_set.shape, test_u.shape)
+# %%
 #Logging Metrics 
 MSE_error = (pred_set - test_u_encoded).pow(2).mean()
 MAE_error = torch.abs(pred_set - test_u_encoded).mean()
@@ -831,81 +715,74 @@ if configuration['Log Normalisation'] == 'Yes':
     test_u = torch.exp(test_u)
     pred_set = torch.exp(pred_set)
 
+u_field = test_u[idx]
 
-# %%
-output_plot = []
-for dim in range(num_vars):
-    u_field = test_u[idx]
+v_min_1 = torch.min(u_field[:,:,0])
+v_max_1 = torch.max(u_field[:,:,0])
 
-    v_min_1 = torch.min(u_field[dim,:,:,0])
-    v_max_1 = torch.max(u_field[dim,:,:,0])
+v_min_2 = torch.min(u_field[:, :, int(T/2)])
+v_max_2 = torch.max(u_field[:, :, int(T/2)])
 
-    v_min_2 = torch.min(u_field[dim, :, :, int(T/2)])
-    v_max_2 = torch.max(u_field[dim, :, :, int(T/2)])
+v_min_3 = torch.min(u_field[:, :, -1])
+v_max_3 = torch.max(u_field[:, :, -1])
 
-    v_min_3 = torch.min(u_field[dim, :, :, -1])
-    v_max_3 = torch.max(u_field[dim, :, :, -1])
-
-    fig = plt.figure(figsize=plt.figaspect(0.5))
-    ax = fig.add_subplot(2,3,1)
-    pcm =ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-    # ax.title.set_text('Initial')
-    ax.title.set_text('t='+ str(T_in))
-    ax.set_ylabel('Solution')
-    fig.colorbar(pcm, pad=0.05)
+fig = plt.figure(figsize=plt.figaspect(0.5))
+ax = fig.add_subplot(2,3,1)
+pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+# ax.title.set_text('Initial')
+ax.title.set_text('t='+ str(T_in))
+ax.set_ylabel('Solution')
+fig.colorbar(pcm, pad=0.05)
 
 
-    ax = fig.add_subplot(2,3,2)
-    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-    # ax.title.set_text('Middle')
-    ax.title.set_text('t='+ str(int((T+T_in)/2)))
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
+ax = fig.add_subplot(2,3,2)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+# ax.title.set_text('Middle')
+ax.title.set_text('t='+ str(int((T+T_in)/2)))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
 
 
-    ax = fig.add_subplot(2,3,3)
-    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-    # ax.title.set_text('Final')
-    ax.title.set_text('t='+str(T+T_in))
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
+ax = fig.add_subplot(2,3,3)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+# ax.title.set_text('Final')
+ax.title.set_text('t='+str(T+T_in))
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
 
 
-    u_field = pred_set[idx]
+u_field = pred_set[idx]
 
-    ax = fig.add_subplot(2,3,4)
-    pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-    ax.set_ylabel('FNO')
+ax = fig.add_subplot(2,3,4)
+pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+ax.set_ylabel('FNO')
 
-    fig.colorbar(pcm, pad=0.05)
+fig.colorbar(pcm, pad=0.05)
 
-    ax = fig.add_subplot(2,3,5)
-    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
+ax = fig.add_subplot(2,3,5)
+pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
 
 
-    ax = fig.add_subplot(2,3,6)
-    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
-
-    plt.title(dims[dim])
-
-    output_plot.append(file_loc + '/Plots/MultiBlobs_' + dims[dim] + '_' + run.name + '.png')
-    plt.savefig(output_plot[dim])
-
-# %%
+ax = fig.add_subplot(2,3,6)
+pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+ax.axes.xaxis.set_ticks([])
+ax.axes.yaxis.set_ticks([])
+fig.colorbar(pcm, pad=0.05)
 
 
 # %%
+output_plot = file_loc + '/Plots/MultiBlobs_' + configuration['Field'] + '_' + run.name + '.png'
+plt.savefig(output_plot)
 
+# %%
+#Simvue Artifact storage
 INPUTS = []
-OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
+OUTPUTS = [model_loc, output_plot]
 
 
 # Save input files
@@ -928,5 +805,3 @@ for output_file in OUTPUTS:
         print('ERROR: output file %s does not exist' % output_file)
 
 run.close()
-
-# %%
