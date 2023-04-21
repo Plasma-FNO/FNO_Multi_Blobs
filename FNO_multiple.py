@@ -27,7 +27,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "T_in": 10,    
                  "T_out": 40,
                  "Step": 5,
-                 "Modes": 16,
+                 "Modes": 4,
                  "Width_time":32, #FNO
                  "Width_vars": 0, #U-Net
                  "Variables":3, 
@@ -39,11 +39,10 @@ configuration = {"Case": 'Multi-Blobs',
                 #  "Dropout Rate": 0.9
                  }
 
-
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Decreasing Modes"], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
 
 # %% 
 import os 

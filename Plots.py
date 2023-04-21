@@ -1623,257 +1623,269 @@ class FNO(nn.Module):
 ################################################################
 
 # %%
-field = configuration['Field']
-if field == 'rho':
-    sol = u
-elif field == 'Phi':
-    sol = v
-elif field == 'T':
-    sol = p
-
-
-ntrain = 240
-ntest = 38
-S = 106 #Grid Size 
-
-#Extracting hyperparameters from the config dict
-modes = configuration['Modes']
-width = configuration['Width']
-output_size = configuration['Step']
-batch_size = configuration['Batch Size']
-T_in = configuration['T_in']
-T = configuration['T_out']
-step = configuration['Step']
-
-t1 = default_timer()
-
-
-#At this stage the data needs to be [Batch_Size, X, Y, T]
-
-train_a = sol[:ntrain,:,:,:T_in]
-train_u = sol[:ntrain,:,:,T_in:T+T_in]
-
-test_a = sol[-ntest:,:,:,:T_in]
-test_u = sol[-ntest:,:,:,T_in:T+T_in]
-
-print(train_u.shape)
-print(test_u.shape)
-
-# %%
-#Normalising the train and test datasets with the preferred normalisation. 
-
-norm_strategy = configuration['Normalisation Strategy']
-
-if norm_strategy == 'Min-Max':
-    a_normalizer = MinMax_Normalizer(train_a)
-    y_normalizer = MinMax_Normalizer(train_u)
-
-if norm_strategy == 'Range':
-    a_normalizer = RangeNormalizer(train_a)
-    y_normalizer = RangeNormalizer(train_u)
-
-if norm_strategy == 'Gaussian':
-    a_normalizer = GaussianNormalizer(train_a)
-    y_normalizer = GaussianNormalizer(train_u)
-
-
-
-train_a = a_normalizer.encode(train_a)
-test_a = a_normalizer.encode(test_a)
-
-train_u = y_normalizer.encode(train_u)
-test_u_encoded = y_normalizer.encode(test_u)
-
-# %%
-#Setting up the dataloaders for the test and train datasets. 
-train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
-
-t2 = default_timer()
-print('preprocessing finished, time used:', t2-t1)
-
-# %%
-
-################################################################
-# training and evaluation
-################################################################
-
-#Instantiating the Model. 
-model = FNO(modes, modes, width)
-# model = model.double()
-# model = nn.DataParallel(model, device_ids = [0,1])
-if field == 'rho':
-    model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_buoyant-trim.pth', map_location=torch.device('cpu')))
-if field == 'Phi':
-    model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_red-depot.pth', map_location=torch.device('cpu')))
-if field == 'T':
-    model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_dry-interest.pth', map_location=torch.device('cpu')))
-model.to(device)
-
-run.update_metadata({'Number of Params': int(model.count_params())})
-print("Number of model params : " + str(model.count_params()))
-
-#Setting up the optimisation schedule. 
-optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
-
-myloss = LpLoss(size_average=False)
-
-epochs = configuration['Epochs']
-if torch.cuda.is_available():
-    y_normalizer.cuda()
-
-
-# %%
-#Testing 
-batch_size = 1
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1, shuffle=False)
-pred_set = torch.zeros(test_u.shape)
-index = 0
-with torch.no_grad():
-    for xx, yy in tqdm(test_loader):
-        loss = 0
-        xx, yy = xx.to(device), yy.to(device)
-        # xx = additive_noise(xx)
-        t1 = default_timer()
-        for t in range(0, T, step):
-            y = yy[..., t:t + step]
-            out = model(xx)
-            loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
-            # loss += myloss(out.reshape(batch_size, -1)*torch.log(out.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
-
-            if t == 0:
-                pred = out
-            else:
-                pred = torch.cat((pred, out), -1)       
-
-            xx = torch.cat((xx[..., step:], out), dim=-1)
-
-        t2 = default_timer()
-        # pred = y_normalizer.decode(pred)
-        pred_set[index]=pred
-        index += 1
-        print(t2-t1)
-
-# %%
-#Logging Metrics 
-MSE_error = (pred_set - test_u_encoded).pow(2).mean()
-MAE_error = torch.abs(pred_set - test_u_encoded).mean()
-LP_error = loss / (ntest*T/step)
-
-print('(MSE) Testing Error: %.3e' % (MSE_error))
-print('(MAE) Testing Error: %.3e' % (MAE_error))
-print('(LP) Testing Error: %.3e' % (LP_error))
-
-run.update_metadata({'MSE Test Error': float(MSE_error),
-                     'MAE Test Error': float(MAE_error),
-                     'LP Test Error': float(LP_error)
-                    })
-
-
-pred_set_encoded = pred_set
-pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
-
-# %% 
-
-if configuration["Physics Normalisation"] == 'Yes':
+errs = []
+for field in dims:
+        
+    # field = configuration['Field']
     if field == 'rho':
-        pred_set = pred_set * 1e20
-        test_u = test_u * 1e20
+        sol = u
+    elif field == 'Phi':
+        sol = v
+    elif field == 'T':
+        sol = p
+
+
+    ntrain = 240
+    ntest = 38
+    S = 106 #Grid Size 
+
+    #Extracting hyperparameters from the config dict
+    modes = configuration['Modes']
+    width = configuration['Width']
+    output_size = configuration['Step']
+    batch_size = configuration['Batch Size']
+    T_in = configuration['T_in']
+    T = configuration['T_out']
+    step = configuration['Step']
+
+    t1 = default_timer()
+
+
+    #At this stage the data needs to be [Batch_Size, X, Y, T]
+
+    train_a = sol[:ntrain,:,:,:T_in]
+    train_u = sol[:ntrain,:,:,T_in:T+T_in]
+
+    test_a = sol[-ntest:,:,:,:T_in]
+    test_u = sol[-ntest:,:,:,T_in:T+T_in]
+
+    print(train_u.shape)
+    print(test_u.shape)
+
+
+    #Normalising the train and test datasets with the preferred normalisation. 
+
+    norm_strategy = configuration['Normalisation Strategy']
+
+    if norm_strategy == 'Min-Max':
+        a_normalizer = MinMax_Normalizer(train_a)
+        y_normalizer = MinMax_Normalizer(train_u)
+
+    if norm_strategy == 'Range':
+        a_normalizer = RangeNormalizer(train_a)
+        y_normalizer = RangeNormalizer(train_u)
+
+    if norm_strategy == 'Gaussian':
+        a_normalizer = GaussianNormalizer(train_a)
+        y_normalizer = GaussianNormalizer(train_u)
+
+
+
+    train_a = a_normalizer.encode(train_a)
+    test_a = a_normalizer.encode(test_a)
+
+    train_u = y_normalizer.encode(train_u)
+    test_u_encoded = y_normalizer.encode(test_u)
+
+
+    #Setting up the dataloaders for the test and train datasets. 
+    train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
+
+    t2 = default_timer()
+    print('preprocessing finished, time used:', t2-t1)
+
+
+    ################################################################
+    # training and evaluation
+    ################################################################
+
+    #Instantiating the Model. 
+    model = FNO(modes, modes, width)
+    # model = model.double()
+    # model = nn.DataParallel(model, device_ids = [0,1])
+    if field == 'rho':
+        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_buoyant-trim.pth', map_location=torch.device('cpu')))
     if field == 'Phi':
-      pred_set = pred_set * 1e6
-      test_u = test_u * 1e6
+        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_direct-anchovy.pth', map_location=torch.device('cpu')))
     if field == 'T':
-        pred_set= pred_set * 1e5
-        test_u = test_u * 1e5
+        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_grave-sharp.pth', map_location=torch.device('cpu')))
+    model.to(device)
 
+    run.update_metadata({'Number of Params': int(model.count_params())})
+    print("Number of model params : " + str(model.count_params()))
+
+    #Setting up the optimisation schedule. 
+    optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
+
+    myloss = LpLoss(size_average=False)
+
+    epochs = configuration['Epochs']
+    if torch.cuda.is_available():
+        y_normalizer.cuda()
+
+
+    #Testing 
+    batch_size = 1
+    test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1, shuffle=False)
+    pred_set = torch.zeros(test_u.shape)
+    index = 0
+    with torch.no_grad():
+        for xx, yy in tqdm(test_loader):
+            loss = 0
+            xx, yy = xx.to(device), yy.to(device)
+            # xx = additive_noise(xx)
+            t1 = default_timer()
+            for t in range(0, T, step):
+                y = yy[..., t:t + step]
+                out = model(xx)
+                loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                # loss += myloss(out.reshape(batch_size, -1)*torch.log(out.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
+
+                if t == 0:
+                    pred = out
+                else:
+                    pred = torch.cat((pred, out), -1)       
+
+                xx = torch.cat((xx[..., step:], out), dim=-1)
+
+            t2 = default_timer()
+            # pred = y_normalizer.decode(pred)
+            pred_set[index]=pred
+            index += 1
+            print(t2-t1)
+
+    #Logging Metrics 
+    MSE_error = (pred_set - test_u_encoded).pow(2).mean()
+    MAE_error = torch.abs(pred_set - test_u_encoded).mean()
+    LP_error = loss / (ntest*T/step)
+
+    print('(MSE) Testing Error: %.3e' % (MSE_error))
+    print('(MAE) Testing Error: %.3e' % (MAE_error))
+    print('(LP) Testing Error: %.3e' % (LP_error))
+
+    run.update_metadata({'MSE Test Error': float(MSE_error),
+                        'MAE Test Error': float(MAE_error),
+                        'LP Test Error': float(LP_error)
+                        })
+
+
+    pred_set_encoded = pred_set
+    pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
+
+
+    if configuration["Physics Normalisation"] == 'Yes':
+        if field == 'rho':
+            pred_set = pred_set * 1e20
+            test_u = test_u * 1e20
+        if field == 'Phi':
+            pred_set = pred_set * 1e6
+            test_u = test_u * 1e6
+        if field == 'T':
+            pred_set= pred_set * 1e5
+            test_u = test_u * 1e5
+
+
+
+    #Plotting the comparison plots
+
+    idx = np.random.randint(0,ntest) 
+    idx = 5
+    idx = 36
+
+    if configuration['Log Normalisation'] == 'Yes':
+        test_u = torch.exp(test_u)
+        pred_set = torch.exp(pred_set)
+
+    u_field = test_u[idx]
+
+    v_min_1 = torch.min(u_field[:,:,0])
+    v_max_1 = torch.max(u_field[:,:,0])
+
+    v_min_2 = torch.min(u_field[:, :, int(T/2)])
+    v_max_2 = torch.max(u_field[:, :, int(T/2)])
+
+    v_min_3 = torch.min(u_field[:, :, -1])
+    v_max_3 = torch.max(u_field[:, :, -1])
+
+    fig = plt.figure(figsize=plt.figaspect(0.5))
+    ax = fig.add_subplot(2,3,1)
+    pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+    # ax.title.set_text('Initial')
+    ax.title.set_text('t='+ str(T_in))
+    ax.set_ylabel('Solution')
+    fig.colorbar(pcm, pad=0.05)
+
+
+    ax = fig.add_subplot(2,3,2)
+    pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+    # ax.title.set_text('Middle')
+    ax.title.set_text('t='+ str(int((T+T_in)/2)))
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    fig.colorbar(pcm, pad=0.05)
+
+
+    ax = fig.add_subplot(2,3,3)
+    pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+    # ax.title.set_text('Final')
+    ax.title.set_text('t='+str(T+T_in))
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    fig.colorbar(pcm, pad=0.05)
+
+
+    u_field = pred_set[idx]
+
+    ax = fig.add_subplot(2,3,4)
+    pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+    ax.set_ylabel('FNO')
+
+    fig.colorbar(pcm, pad=0.05)
+
+    ax = fig.add_subplot(2,3,5)
+    pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    fig.colorbar(pcm, pad=0.05)
+
+
+    ax = fig.add_subplot(2,3,6)
+    pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    fig.colorbar(pcm, pad=0.05)
+
+    #Plotting the error growth across time.
+    err = [] 
+
+    for ii in range(T):
+        err.append(torch.abs(pred_set_encoded[...,ii] - test_u_encoded[...,ii]).mean())
+
+    err = np.asarray(err)
+    errs.append(err)
 
 
 # %%
-#Plotting the comparison plots
-
-idx = np.random.randint(0,ntest) 
-idx = 5
-
-if configuration['Log Normalisation'] == 'Yes':
-    test_u = torch.exp(test_u)
-    pred_set = torch.exp(pred_set)
-
-u_field = test_u[idx]
-
-v_min_1 = torch.min(u_field[:,:,0])
-v_max_1 = torch.max(u_field[:,:,0])
-
-v_min_2 = torch.min(u_field[:, :, int(T/2)])
-v_max_2 = torch.max(u_field[:, :, int(T/2)])
-
-v_min_3 = torch.min(u_field[:, :, -1])
-v_max_3 = torch.max(u_field[:, :, -1])
-
-fig = plt.figure(figsize=plt.figaspect(0.5))
-ax = fig.add_subplot(2,3,1)
-pcm =ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-# ax.title.set_text('Initial')
-ax.title.set_text('t='+ str(T_in))
-ax.set_ylabel('Solution')
-fig.colorbar(pcm, pad=0.05)
-
-
-ax = fig.add_subplot(2,3,2)
-pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-# ax.title.set_text('Middle')
-ax.title.set_text('t='+ str(int((T+T_in)/2)))
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
-
-
-ax = fig.add_subplot(2,3,3)
-pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-# ax.title.set_text('Final')
-ax.title.set_text('t='+str(T+T_in))
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
-
-
-u_field = pred_set[idx]
-
-ax = fig.add_subplot(2,3,4)
-pcm = ax.imshow(u_field[:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-ax.set_ylabel('FNO')
-
-fig.colorbar(pcm, pad=0.05)
-
-ax = fig.add_subplot(2,3,5)
-pcm = ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
-
-
-ax = fig.add_subplot(2,3,6)
-pcm = ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-ax.axes.xaxis.set_ticks([])
-ax.axes.yaxis.set_ticks([])
-fig.colorbar(pcm, pad=0.05)
-
+# plt.plot(np.arange(T_in, T_in + T), err, label=field + ' - solo', alpha=0.8,  color = 'tab:brown')
+# plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'tab:blue')
+# # plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'tab:orange')
+# # plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'tab:green')
+# # plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'tab:red', ls='--')
+# plt.legend()
+# plt.xlabel('Time Steps')
+# plt.ylabel('NMAE ')
 # %%
-#Plotting the error growth across time.
-err = [] 
-
-for ii in range(T):
-    err.append(torch.abs(pred_set_encoded[...,ii] - test_u_encoded[...,ii]).mean())
-
-err = np.asarray(err)
-
-
+err_rho_solo, err_phi_solo, err_T_solo = errs[0], errs[1], errs[2]
 # %%
-plt.plot(np.arange(T_in, T_in + T), err, label='Density-Solo', alpha=0.8,  color = 'tab:brown')
-plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'tab:blue')
-# plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'tab:orange')
-# plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'tab:green')
-# plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'tab:red', ls='--')
+plt.figure()
+plt.plot(np.arange(T_in, T_in + T), err_rho_solo, label='Density - Single', alpha=0.8,  color = 'royalblue', ls='--')
+plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density - Multi', alpha=0.7,  color = 'navy')
+# plt.plot(np.arange(T_in, T_in + T), err_phi_solo, label='Potential - Single', alpha=0.8,  color = 'mediumseagreen', ls='--')
+plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential - Multi', alpha=0.7,  color = 'darkgreen')
+plt.plot(np.arange(T_in, T_in + T), err_T_solo, label='Temp - Single', alpha=0.8,  color = 'lightcoral', ls='--')
+plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp - Multi', alpha=0.7,  color = 'maroon')
 plt.legend()
 plt.xlabel('Time Steps')
 plt.ylabel('NMAE ')
