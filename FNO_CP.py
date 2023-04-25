@@ -549,42 +549,85 @@ def calibrate(alpha):
     return empirical_coverage
 
 
-alpha_levels = np.arange(0.05, 0.95, 0.1)
+alpha_levels = np.arange(0.05, 0.95, 0.05)
 emp_cov = []
 for ii in tqdm(range(len(alpha_levels))):
     emp_cov.append(calibrate(alpha_levels[ii]))
 
 # %% 
-plt.plot(1-alpha_levels, 1-alpha_levels, label='Ideal')
-plt.plot(1-alpha_levels, emp_cov, label='Coverage')
+import matplotlib as mpl
+plt.plot(1-alpha_levels, 1-alpha_levels, label='Ideal', linewidth = 3, color='firebrick')
+plt.plot(1-alpha_levels, emp_cov, label='Coverage', linewidth=3, color='teal')
 plt.xlabel('1-alpha')
 plt.ylabel('Empirical Coverage')
 plt.legend()
-
+mpl.rcParams['xtick.minor.visible']=True
+mpl.rcParams['font.size']=45
+mpl.rcParams['figure.figsize']=(16,16)
+mpl.rcParams['xtick.minor.visible']=True
+mpl.rcParams['axes.linewidth']= 3
+mpl.rcParams['axes.titlepad'] = 20
+plt.rcParams['xtick.major.size'] =15
+plt.rcParams['ytick.major.size'] =15
+plt.rcParams['xtick.minor.size'] =10
+plt.rcParams['ytick.minor.size'] =10
+plt.rcParams['xtick.major.width'] =5
+plt.rcParams['ytick.major.width'] =5
+plt.rcParams['xtick.minor.width'] =5
+plt.rcParams['ytick.minor.width'] =5
+mpl.rcParams['axes.titlepad'] = 20
 # %% 
 x_pos = 5
 time = 20
 var = 0 
 plt.figure()
-plt.plot(y_grid,mean_vals[idx, var, x_pos, :, time], label='Prediction', alpha=0.8,  color = 'tab:blue')
-plt.plot(y_grid,lower_vals[idx, var, x_pos, :, time], label='Lower', alpha=0.8,  color = 'tab:orange', ls='--')
-plt.plot(y_grid, upper_vals[idx, var, x_pos, :, time], label='Upper', alpha=0.8,  color = 'tab:green', ls='--')
-plt.plot(y_grid, soln_vals[idx, var, x_pos, :, time], label='Solution', alpha=0.8,  color = 'tab:red')
+plt.plot(y_grid,mean_vals[idx, var, x_pos, :, time], label='Prediction', alpha=0.8,  color = 'tab:blue', linewidth=3)
+plt.plot(y_grid,lower_vals[idx, var, x_pos, :, time], label='Lower', alpha=0.8,  color = 'tab:orange', ls='--', linewidth=3)
+plt.plot(y_grid, upper_vals[idx, var, x_pos, :, time], label='Upper', alpha=0.8,  color = 'tab:green', ls='--', linewidth=3)
+plt.plot(y_grid, soln_vals[idx, var, x_pos, :, time], label='Solution', alpha=0.8,  color = 'tab:red', linewidth=3)
 plt.legend()
 plt.xlabel('Z-Axis')
-plt.ylabel('Density')# %%
-
+plt.ylabel('Density')
+mpl.rcParams['xtick.minor.visible']=True
+mpl.rcParams['font.size']=45
+mpl.rcParams['figure.figsize']=(16,16)
+mpl.rcParams['xtick.minor.visible']=True
+mpl.rcParams['axes.linewidth']= 3
+mpl.rcParams['axes.titlepad'] = 20
+plt.rcParams['xtick.major.size'] =15
+plt.rcParams['ytick.major.size'] =15
+plt.rcParams['xtick.minor.size'] =10
+plt.rcParams['ytick.minor.size'] =10
+plt.rcParams['xtick.major.width'] =5
+plt.rcParams['ytick.major.width'] =5
+plt.rcParams['xtick.minor.width'] =5
+plt.rcParams['ytick.minor.width'] =5
+mpl.rcParams['axes.titlepad'] = 20
 # %%
 y_pos = 40
 time = 20
 var = 0 
 plt.figure()
-plt.plot(x_grid,mean_vals[idx, var, :, y_pos, time], label='Prediction', alpha=0.8,  color = 'tab:blue')
-plt.plot(x_grid,lower_vals[idx, var, :, y_pos, time], label='Lower', alpha=0.8,  color = 'tab:orange', ls='--')
-plt.plot(x_grid, upper_vals[idx, var,:, y_pos, time], label='Upper', alpha=0.8,  color = 'tab:green', ls='--')
-plt.plot(x_grid, soln_vals[idx, var,:, y_pos, time], label='Solution', alpha=0.8,  color = 'tab:red')
+plt.plot(x_grid,mean_vals[idx, var, :, y_pos, time], label='Prediction', alpha=0.8,  color = 'tab:blue', linewidth=3)
+plt.plot(x_grid,lower_vals[idx, var, :, y_pos, time], label='Lower', alpha=0.8,  color = 'tab:orange', ls='--', linewidth=3)
+plt.plot(x_grid, upper_vals[idx, var,:, y_pos, time], label='Upper', alpha=0.8,  color = 'teal', ls='--', linewidth=3)
+plt.plot(x_grid, soln_vals[idx, var,:, y_pos, time], label='Solution', alpha=0.8,  color = 'firebrick', linewidth=3)
 plt.legend()
 plt.xlabel('R-Axis')
 plt.ylabel('Density')# %%
-
+mpl.rcParams['xtick.minor.visible']=True
+mpl.rcParams['font.size']=45
+mpl.rcParams['figure.figsize']=(16,16)
+mpl.rcParams['xtick.minor.visible']=True
+mpl.rcParams['axes.linewidth']= 3
+mpl.rcParams['axes.titlepad'] = 20
+plt.rcParams['xtick.major.size'] =15
+plt.rcParams['ytick.major.size'] =15
+plt.rcParams['xtick.minor.size'] =10
+plt.rcParams['ytick.minor.size'] =10
+plt.rcParams['xtick.major.width'] =5
+plt.rcParams['ytick.major.width'] =5
+plt.rcParams['xtick.minor.width'] =5
+plt.rcParams['ytick.minor.width'] =5
+mpl.rcParams['axes.titlepad'] = 20
 # %%
