@@ -761,12 +761,15 @@ if configuration["Physics Normalisation"] == 'Yes':
 
 # %%
 #Plotting the comparison plots
-
 idx = np.random.randint(0,ntest) 
+
 # idx = 5
 # idx = 36
-idx = 3
+# idx = 3
 # %%
+idx = 24
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 output_plot = []
 for dim in range(num_vars):
     u_field = test_u[idx]
@@ -780,23 +783,27 @@ for dim in range(num_vars):
     v_min_3 = torch.min(u_field[dim, :, :, -1])
     v_max_3 = torch.max(u_field[dim, :, :, -1])
 
-    fig = plt.figure(figsize=plt.figaspect(0.5))
+    fig = plt.figure(figsize=(10, 6))
     ax = fig.add_subplot(2,3,1)
     pcm =ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
     # ax.title.set_text('Initial')
     ax.title.set_text('t='+ str(T_in))
     ax.set_ylabel('Solution')
-    fig.colorbar(pcm, pad=0.05)
-
-
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+    
     ax = fig.add_subplot(2,3,2)
     pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
     # ax.title.set_text('Middle')
     ax.title.set_text('t='+ str(int((T+T_in)/2)))
     ax.axes.xaxis.set_ticks([])
     ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
-
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
     ax = fig.add_subplot(2,3,3)
     pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
@@ -804,33 +811,41 @@ for dim in range(num_vars):
     ax.title.set_text('t='+str(T+T_in))
     ax.axes.xaxis.set_ticks([])
     ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
-
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
     u_field = pred_set[idx]
 
     ax = fig.add_subplot(2,3,4)
     pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
     ax.set_ylabel('FNO')
-
-    fig.colorbar(pcm, pad=0.05)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
     ax = fig.add_subplot(2,3,5)
     pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
     ax.axes.xaxis.set_ticks([])
     ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
-
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
     ax = fig.add_subplot(2,3,6)
     pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
     ax.axes.xaxis.set_ticks([])
     ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
-    plt.title(dims[dim])
 
-
+    
 
 
 
@@ -849,14 +864,29 @@ err_phi = np.asarray(err_phi)
 err_T = np.asarray(err_T)
 
 # %%
-plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'tab:blue')
-plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'tab:orange')
-plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'tab:green')
-plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'tab:red', ls='--')
+import matplotlib as mpl
+plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'navy', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'darkgreen', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'maroon', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'black', ls='--', linewidth=5)
 plt.legend()
 plt.xlabel('Time Steps')
 plt.ylabel('NMAE ')
-
+mpl.rcParams['xtick.minor.visible']=True
+mpl.rcParams['font.size']=45
+mpl.rcParams['figure.figsize']=(16,16)
+mpl.rcParams['xtick.minor.visible']=True
+mpl.rcParams['axes.linewidth']= 3
+mpl.rcParams['axes.titlepad'] = 20
+plt.rcParams['xtick.major.size'] =15
+plt.rcParams['ytick.major.size'] =15
+plt.rcParams['xtick.minor.size'] =10
+plt.rcParams['ytick.minor.size'] =10
+plt.rcParams['xtick.major.width'] =5
+plt.rcParams['ytick.major.width'] =5
+plt.rcParams['xtick.minor.width'] =5
+plt.rcParams['ytick.minor.width'] =5
+mpl.rcParams['axes.titlepad'] = 20
 
 # %%
 
@@ -2029,12 +2059,12 @@ err_rho_solo, err_phi_solo, err_T_solo = errs[0], errs[1], errs[2]
 # %%
 import matplotlib as mpl
 plt.figure()
-plt.plot(np.arange(T_in, T_in + T), err_rho_solo, label='Density - Single', alpha=0.8,  color = 'royalblue', ls='--', linewidth=3)
-plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density - Multi', alpha=0.7,  color = 'navy', linewidth=3)
-plt.plot(np.arange(T_in, T_in + T), err_phi_solo, label='Potential - Single', alpha=0.8,  color = 'mediumseagreen', ls='--', linewidth=3)
-plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential - Multi', alpha=0.7,  color = 'darkgreen', linewidth=3)
-plt.plot(np.arange(T_in, T_in + T), err_T_solo, label='Temp - Single', alpha=0.8,  color = 'lightcoral', ls='--', linewidth=3)
-plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp - Multi', alpha=0.7,  color = 'maroon', linewidth=3)
+plt.plot(np.arange(T_in, T_in + T), err_rho_solo, label='Density - Single', alpha=0.8,  color = 'royalblue', ls='--', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density - Multi', alpha=0.7,  color = 'navy', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_phi_solo, label='Potential - Single', alpha=0.8,  color = 'mediumseagreen', ls='--', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential - Multi', alpha=0.7,  color = 'darkgreen', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_T_solo, label='Temp - Single', alpha=0.8,  color = 'lightcoral', ls='--', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp - Multi', alpha=0.7,  color = 'maroon', linewidth=5)
 plt.legend()
 plt.xlabel('Time Steps')
 plt.ylabel('NMAE ')
