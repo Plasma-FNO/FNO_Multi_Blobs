@@ -40,7 +40,7 @@ configuration = {"Case": 'Multi-Blobs',
 
 # %%
 from simvue import Run
-run = Run()
+run = Run(mode='disabled')
 run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
 
 # %% 
@@ -844,10 +844,110 @@ for dim in range(num_vars):
     cbar = fig.colorbar(pcm, cax=cax)
     cbar.formatter.set_powerlimits((0, 0))
 
+# %% 
+#Error Plots
 
+output_plot = []
+for dim in range(num_vars):
+    u_field = test_u[idx]
+
+    v_min_1 = torch.min(u_field[dim,:,:,0])
+    v_max_1 = torch.max(u_field[dim,:,:,0])
+
+    v_min_2 = torch.min(u_field[dim, :, :, int(T/2)])
+    v_max_2 = torch.max(u_field[dim, :, :, int(T/2)])
+
+    v_min_3 = torch.min(u_field[dim, :, :, -1])
+    v_max_3 = torch.max(u_field[dim, :, :, -1])
+
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(3,3,1)
+    pcm =ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+    # ax.title.set_text('Initial')
+    ax.title.set_text('t='+ str(T_in))
+    ax.set_ylabel('Solution')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
     
+    ax = fig.add_subplot(3,3,2)
+    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+    # ax.title.set_text('Middle')
+    ax.title.set_text('t='+ str(int((T+T_in)/2)))
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
+    ax = fig.add_subplot(3,3,3)
+    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+    # ax.title.set_text('Final')
+    ax.title.set_text('t='+str(T+T_in))
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
+    u_field = pred_set[idx]
+
+    ax = fig.add_subplot(3,3,4)
+    pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+    ax.set_ylabel('FNO')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+
+    ax = fig.add_subplot(3,3,5)
+    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+
+    ax = fig.add_subplot(3,3,6)
+    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+
+    u_field = torch.abs(test_u[idx] - pred_set[idx])
+
+    ax = fig.add_subplot(3,3,7)
+    pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5])
+    ax.set_ylabel('Abs Error')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+
+    ax = fig.add_subplot(3,3,8)
+    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5])
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+
+    ax = fig.add_subplot(3,3,9)
+    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5])
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
 # %%
 #Plotting the error growth across time.

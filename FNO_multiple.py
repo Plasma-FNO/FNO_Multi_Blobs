@@ -194,115 +194,115 @@ class RangeNormalizer(object):
         self.a = self.a.cpu()
         self.b = self.b.cpu()
 
-#normalization, rangewise but single value. 
-class MinMax_Normalizer(object):
-    def __init__(self, x, low=0.0, high=1.0):
-        super(MinMax_Normalizer, self).__init__()
-        min_u = torch.min(x[:,0,:,:,:])
-        max_u = torch.max(x[:,0,:,:,:])
-
-        self.a_u = (high - low)/(max_u - min_u)
-        self.b_u = -self.a_u*max_u + high
-
-        min_v = torch.min(x[:,1,:,:,:])
-        max_v = torch.max(x[:,1,:,:,:])
-
-        self.a_v = (high - low)/(max_v - min_v)
-        self.b_v = -self.a_v*max_v + high
-
-        min_p = torch.min(x[:,2,:,:,:])
-        max_p = torch.max(x[:,2,:,:,:])
-
-        self.a_p = (high - low)/(max_p - min_p)
-        self.b_p = -self.a_p*max_p + high
-        
-
-    def encode(self, x):
-        s = x.size()
-
-        u = x[:,0,:,:,:]
-        u = self.a_u*u + self.b_u
-
-        v = x[:,1,:,:,:]
-        v = self.a_v*v + self.b_v
-
-        p = x[:,2,:,:,:]
-        p = self.a_p*p + self.b_p
-        
-        x = torch.stack((u,v,p), dim=1)
-
-        return x
-
-    def decode(self, x):
-        s = x.size()
-
-        u = x[:,0,:,:,:]
-        u = (u - self.b_u)/self.a_u
-        
-        v = x[:,1,:,:,:]
-        v = (v - self.b_v)/self.a_v
-
-        p = x[:,2,:,:,:]
-        p = (p - self.b_p)/self.a_p
-
-
-        x = torch.stack((u,v,p), dim=1)
-
-        return x
-
-    def cuda(self):
-        self.a_u = self.a_u.cuda()
-        self.b_u = self.b_u.cuda()
-        
-        self.a_v = self.a_v.cuda()
-        self.b_v = self.b_v.cuda() 
-
-        self.a_p = self.a_p.cuda()
-        self.b_p = self.b_p.cuda()
-
-
-    def cpu(self):
-        self.a_u = self.a_u.cpu()
-        self.b_u = self.b_u.cpu()
-        
-        self.a_v = self.a_v.cpu()
-        self.b_v = self.b_v.cpu()
-
-        self.a_p = self.a_p.cpu()
-        self.b_p = self.b_p.cpu()
-
-
-# #normalization, rangewise but across the full domain 
+# #normalization, rangewise but single value. 
 # class MinMax_Normalizer(object):
-#     def __init__(self, x, low=-1.0, high=1.0):
+#     def __init__(self, x, low=0.0, high=1.0):
 #         super(MinMax_Normalizer, self).__init__()
-#         mymin = torch.min(x)
-#         mymax = torch.max(x)
+#         min_u = torch.min(x[:,0,:,:,:])
+#         max_u = torch.max(x[:,0,:,:,:])
 
-#         self.a = (high - low)/(mymax - mymin)
-#         self.b = -self.a*mymax + high
+#         self.a_u = (high - low)/(max_u - min_u)
+#         self.b_u = -self.a_u*max_u + high
+
+#         min_v = torch.min(x[:,1,:,:,:])
+#         max_v = torch.max(x[:,1,:,:,:])
+
+#         self.a_v = (high - low)/(max_v - min_v)
+#         self.b_v = -self.a_v*max_v + high
+
+#         min_p = torch.min(x[:,2,:,:,:])
+#         max_p = torch.max(x[:,2,:,:,:])
+
+#         self.a_p = (high - low)/(max_p - min_p)
+#         self.b_p = -self.a_p*max_p + high
+        
 
 #     def encode(self, x):
 #         s = x.size()
-#         x = x.reshape(s[0], -1)
-#         x = self.a*x + self.b
-#         x = x.view(s)
+
+#         u = x[:,0,:,:,:]
+#         u = self.a_u*u + self.b_u
+
+#         v = x[:,1,:,:,:]
+#         v = self.a_v*v + self.b_v
+
+#         p = x[:,2,:,:,:]
+#         p = self.a_p*p + self.b_p
+        
+#         x = torch.stack((u,v,p), dim=1)
+
 #         return x
 
 #     def decode(self, x):
 #         s = x.size()
-#         x = x.reshape(s[0], -1)
-#         x = (x - self.b)/self.a
-#         x = x.view(s)
+
+#         u = x[:,0,:,:,:]
+#         u = (u - self.b_u)/self.a_u
+        
+#         v = x[:,1,:,:,:]
+#         v = (v - self.b_v)/self.a_v
+
+#         p = x[:,2,:,:,:]
+#         p = (p - self.b_p)/self.a_p
+
+
+#         x = torch.stack((u,v,p), dim=1)
+
 #         return x
 
 #     def cuda(self):
-#         self.a = self.a.cuda()
-#         self.b = self.b.cuda()
+#         self.a_u = self.a_u.cuda()
+#         self.b_u = self.b_u.cuda()
+        
+#         self.a_v = self.a_v.cuda()
+#         self.b_v = self.b_v.cuda() 
+
+#         self.a_p = self.a_p.cuda()
+#         self.b_p = self.b_p.cuda()
+
 
 #     def cpu(self):
-#         self.a = self.a.cpu()
-#         self.b = self.b.cpu()
+#         self.a_u = self.a_u.cpu()
+#         self.b_u = self.b_u.cpu()
+        
+#         self.a_v = self.a_v.cpu()
+#         self.b_v = self.b_v.cpu()
+
+#         self.a_p = self.a_p.cpu()
+#         self.b_p = self.b_p.cpu()
+
+
+#normalization, rangewise but across the full domain 
+class MinMax_Normalizer(object):
+    def __init__(self, x, low=-1.0, high=1.0):
+        super(MinMax_Normalizer, self).__init__()
+        mymin = torch.min(x)
+        mymax = torch.max(x)
+
+        self.a = (high - low)/(mymax - mymin)
+        self.b = -self.a*mymax + high
+
+    def encode(self, x):
+        s = x.size()
+        x = x.reshape(s[0], -1)
+        x = self.a*x + self.b
+        x = x.view(s)
+        return x
+
+    def decode(self, x):
+        s = x.size()
+        x = x.reshape(s[0], -1)
+        x = (x - self.b)/self.a
+        x = x.view(s)
+        return x
+
+    def cuda(self):
+        self.a = self.a.cuda()
+        self.b = self.b.cuda()
+
+    def cpu(self):
+        self.a = self.a.cpu()
+        self.b = self.b.cpu()
 
 
 # %%
@@ -739,7 +739,7 @@ for ep in tqdm(range(epochs)):
             for t in range(0, T, step):
                 y = yy[..., t:t + step]
                 im = model(xx)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                loss += myloss(im.reshape(xx.shape[0], -1), y.reshape(xx.shape[0], -1))
 
                 if t == 0:
                     pred = im

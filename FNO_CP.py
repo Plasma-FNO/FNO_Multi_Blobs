@@ -633,3 +633,38 @@ plt.rcParams['xtick.minor.width'] =5
 plt.rcParams['ytick.minor.width'] =5
 mpl.rcParams['axes.titlepad'] = 20
 # %%
+# %% 
+idx = 10
+var = 0 
+time = 0
+levels = 2
+X, Y = np.meshgrid(x_grid, y_grid)
+plt.rcParams['contour.negative_linestyle'] = 'solid'
+fig, ax = plt.subplots()
+mean_plot = ax.contour(X, Y, mean_vals[idx, var, :, :, time], levels, colors='k')  
+lower_plot = ax.contour(X, Y, lower_vals[idx, var, :, :, time], levels, colors='red') 
+upper_plot = ax.contour(X, Y, upper_vals[idx, var, :, :, time], levels, colors='blue') 
+
+# %% 
+#3D Plotly contour plots 
+import plotly.graph_objects as go
+import plotly.io as pio
+pio.renderers.default = "notebook_connected"
+
+idx = 25
+var = 0
+time = 24
+
+fig = go.Figure(data=[
+    go.Surface(x = x_grid, y = y_grid, z= mean_vals[idx, var, :, :, time], opacity=0.9, colorscale='tealrose'),
+    go.Surface(x = x_grid, y = y_grid, z=lower_vals[idx, var, :, :, time], colorscale = 'turbid', showscale=False, opacity=0.6),
+    go.Surface(x = x_grid, y = y_grid, z=upper_vals[idx, var, :, :, time], colorscale = 'Electric',showscale=False, opacity=0.3)
+
+])
+fig.update_traces(showscale=False)
+
+# fig.update_traces(contours_z=dict(show=True, usecolormap=True,
+#                                   highlightcolor="limegreen", project_z=True))
+fig.show()
+
+# %%

@@ -19,7 +19,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "T_out": 40,
                  "Step": 5,
                  "Modes": 8,
-                 "Width_time":32, #FNO
+                 "Width_time": , #FNO
                  "Width_vars": 0, #U-Net
                  "Variables":3, 
                  "Noise":0.0, 
@@ -32,7 +32,7 @@ configuration = {"Case": 'Multi-Blobs',
 
 # %%
 from simvue import Run
-run = Run()
+run = Run(mode='disabled')
 run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
 
 # %% 
@@ -834,7 +834,7 @@ step = 10
 ################################################################
 # training and evaluation
 ################################################################
-model = FNO_multi(modes, modes, width_vars, width_time)
+model = FNO_multi(16, 16, width_vars, width_time)
 model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_amber-capstan.pth', map_location=torch.device('cpu')))
 
 model.to(device)
@@ -983,8 +983,8 @@ step = 1
 ################################################################
 # training and evaluation
 ################################################################
-model = FNO_multi(modes, modes, width_vars, width_time)
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_isothermal_blob_worn-filter.pth', map_location=torch.device('cpu')))
+model = FNO_multi(16,16, width_vars, width_time)
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_fast-plisse.pth', map_location=torch.device('cpu')))
 
 model.to(device)
 

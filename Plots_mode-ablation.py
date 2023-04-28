@@ -41,7 +41,7 @@ configuration = {"Case": 'Multi-Blobs',
 
 # %%
 from simvue import Run
-run = Run()
+run = Run(mode='disabled')
 run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
 
 # %% 
@@ -882,6 +882,7 @@ plt.rcParams['ytick.minor.width'] =5
 mpl.rcParams['axes.titlepad'] = 20
 # %%
 
+idx = 8
 # %% 
 
 dim = 1
