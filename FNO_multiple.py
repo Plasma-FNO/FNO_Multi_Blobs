@@ -26,7 +26,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Physics Normalisation": 'Yes',
                  "T_in": 10,    
                  "T_out": 40,
-                 "Step": 1,
+                 "Step": 5,
                  "Modes": 16,
                  "Width_time":32, #FNO
                  "Width_vars": 0, #U-Net
@@ -35,6 +35,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Loss Function": 'LP Loss',
                  "Spatial Resolution": 1,
                  "Temporal Resolution": 1,
+                 "Gradient Clipping Norm": 1, 
                 #  "UQ": 'Dropout',
                 #  "Dropout Rate": 0.9
                  }
@@ -42,7 +43,7 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Gradient Clipping"], metadata=configuration)
 
 # %% 
 import os 
@@ -694,6 +695,9 @@ if torch.cuda.is_available():
     y_normalizer.cuda()
 
 # %%
+
+max_grad_clip_norm = configuration['Gradient Clipping Norm']
+
 start_time = time.time()
 for ep in tqdm(range(epochs)):
     model.train()
@@ -725,8 +729,11 @@ for ep in tqdm(range(epochs)):
         train_l2_full += l2_full.item()
 
         loss.backward()
+        torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=max_grad_clip_norm, norm_type=2.0)
+
         # l2_full.backward()
         optimizer.step()
+
 
     test_l2_step = 0
     test_l2_full = 0
@@ -739,7 +746,7 @@ for ep in tqdm(range(epochs)):
             for t in range(0, T, step):
                 y = yy[..., t:t + step]
                 im = model(xx)
-                loss += myloss(im.reshape(xx.shape[0], -1), y.reshape(xx.shape[0], -1))
+                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
                 if t == 0:
                     pred = im
