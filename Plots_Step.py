@@ -1768,13 +1768,6 @@ err_5 = np.asarray(err_5)
 err_10 = np.asarray(err_10)
 # %%
 import matplotlib as mpl
-plt.figure()
-plt.plot(np.arange(T_in, T_in + T), err_1, label='Step=1', alpha=0.8,   color = 'darkorange', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_5, label='Step=5', alpha=0.8,  color = 'firebrick', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_10, label='Step=10', alpha=0.8,  color = 'teal', linewidth=5)
-plt.legend()
-plt.xlabel('Time Steps')
-plt.ylabel('NMAE ')
 mpl.rcParams['xtick.minor.visible']=True
 mpl.rcParams['font.size']=45
 mpl.rcParams['figure.figsize']=(16,16)
@@ -1790,4 +1783,18 @@ plt.rcParams['ytick.major.width'] =5
 plt.rcParams['xtick.minor.width'] =5
 plt.rcParams['ytick.minor.width'] =5
 mpl.rcParams['axes.titlepad'] = 20
+mpl.rcParams['lines.linewidth'] = 5
+plt.figure()
+
+plt.plot(np.arange(T_in, T_in + T), err_1, label='Step=1', alpha=0.8,   color = 'darkorange', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_5, label='Step=5', alpha=0.8,  color = 'firebrick', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_10, label='Step=10', alpha=0.8,  color = 'teal', linewidth=5)
+plt.grid()
+plt.legend()
+plt.xlabel('Time Steps')
+plt.ylabel('NMAE ')
+
+plt.savefig("mb_error_steps.pdf", bbox_inches='tight')
+plt.savefig("mb_error_steps.svg", bbox_inches='tight')
+
 # %%

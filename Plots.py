@@ -965,13 +965,9 @@ err_T = np.asarray(err_T)
 
 # %%
 import matplotlib as mpl
-plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'navy', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'darkgreen', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'maroon', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'black', ls='--', linewidth=5)
-plt.legend()
-plt.xlabel('Time Steps')
-plt.ylabel('NMAE ')
+plt.rcParams['grid.linewidth'] = 0.5
+plt.rcParams['grid.alpha'] = 0.5
+plt.rcParams['grid.linestyle'] = '-'
 mpl.rcParams['xtick.minor.visible']=True
 mpl.rcParams['font.size']=45
 mpl.rcParams['figure.figsize']=(16,16)
@@ -988,8 +984,18 @@ plt.rcParams['xtick.minor.width'] =5
 plt.rcParams['ytick.minor.width'] =5
 mpl.rcParams['axes.titlepad'] = 20
 
-# %%
+plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'navy', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'darkgreen', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'maroon', linewidth=5)
+plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'black', ls='--', linewidth=5)
+plt.legend()
+plt.grid()
+plt.xlabel('Time Steps')
+plt.ylabel('NMAE ')
 
+plt.savefig("multiblobs_error_growth_cum.pdf", bbox_inches='tight')
+plt.savefig("multiblobs_error_growth_cum.svg", bbox_inches='tight')
+# %%
 # #Dropout Plots
 # #Cyan-Provolone
 # configuration = {"Case": 'Multi-Blobs',
@@ -2158,29 +2164,38 @@ for field in dims:
 err_rho_solo, err_phi_solo, err_T_solo = errs[0], errs[1], errs[2]
 # %%
 import matplotlib as mpl
-plt.figure()
-plt.plot(np.arange(T_in, T_in + T), err_rho_solo, label='Density - Single', alpha=0.8,  color = 'royalblue', ls='--', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density - Multi', alpha=0.7,  color = 'navy', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_phi_solo, label='Potential - Single', alpha=0.8,  color = 'mediumseagreen', ls='--', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential - Multi', alpha=0.7,  color = 'darkgreen', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_T_solo, label='Temp - Single', alpha=0.8,  color = 'lightcoral', ls='--', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp - Multi', alpha=0.7,  color = 'maroon', linewidth=5)
-plt.legend()
-plt.xlabel('Time Steps')
-plt.ylabel('NMAE ')
+
+plt.rcParams['grid.linewidth'] = 0.5
+plt.rcParams['grid.alpha'] = 0.5
+plt.rcParams['grid.linestyle'] = '-'
 mpl.rcParams['xtick.minor.visible']=True
 mpl.rcParams['font.size']=45
 mpl.rcParams['figure.figsize']=(16,16)
 mpl.rcParams['xtick.minor.visible']=True
-mpl.rcParams['axes.linewidth']= 3
-mpl.rcParams['axes.titlepad'] = 20
-plt.rcParams['xtick.major.size'] =15
-plt.rcParams['ytick.major.size'] =15
-plt.rcParams['xtick.minor.size'] =10
-plt.rcParams['ytick.minor.size'] =10
-plt.rcParams['xtick.major.width'] =5
-plt.rcParams['ytick.major.width'] =5
-plt.rcParams['xtick.minor.width'] =5
-plt.rcParams['ytick.minor.width'] =5
-mpl.rcParams['axes.titlepad'] = 20
+mpl.rcParams['axes.linewidth']= 1
+mpl.rcParams['axes.titlepad'] = 30
+plt.rcParams['xtick.major.size'] = 20
+plt.rcParams['ytick.major.size'] = 20
+plt.rcParams['xtick.minor.size'] = 10.0
+plt.rcParams['ytick.minor.size'] = 10.0
+plt.rcParams['xtick.major.width'] = 0.8
+plt.rcParams['ytick.major.width'] = 0.8
+plt.rcParams['xtick.minor.width'] = 0.6
+plt.rcParams['ytick.minor.width'] = 0.6
+mpl.rcParams['lines.linewidth'] = 1
+plt.figure()
+plt.grid()
+plt.plot(np.arange(T_in, T_in + T), err_rho_solo, label='Density - Single', alpha=0.8,  color = 'royalblue', ls='--')
+plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density - Multi', alpha=0.7,  color = 'navy')
+plt.plot(np.arange(T_in, T_in + T), err_phi_solo, label='Potential - Single', alpha=0.8,  color = 'mediumseagreen', ls='--')
+plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential - Multi', alpha=0.7,  color = 'darkgreen')
+plt.plot(np.arange(T_in, T_in + T), err_T_solo, label='Temp - Single', alpha=0.8,  color = 'lightcoral', ls='--')
+plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp - Multi', alpha=0.7,  color = 'maroon')
+plt.legend()
+plt.xlabel('Time Steps')
+plt.ylabel('NMAE ')
+
+
+plt.savefig("multiblobs_error_growth.pdf", bbox_inches='tight')
+plt.savefig("multiblobs_error_growth.svg", bbox_inches='tight')
 # %%

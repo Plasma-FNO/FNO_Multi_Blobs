@@ -43,11 +43,10 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Data Size"], metadata=configuration)
-
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Data Size", "Test Loss" , "T_norm_1e7"], metadata=configuration)
 # %% 
 import os 
-CODE = ['FNO_multiple.py']
+CODE = ['FNO_Multiple_dataset_size.py']
 
 # Save code files
 for code_file in CODE:
@@ -598,7 +597,7 @@ num_vars = configuration['Variables']
 
 u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
 v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e7
 
 u_sol = np.nan_to_num(u_sol)
 v_sol = np.nan_to_num(v_sol)
@@ -729,39 +728,59 @@ for ep in tqdm(range(epochs)):
         # l2_full.backward()
         optimizer.step()
 
-    test_l2_step = 0
-    test_l2_full = 0
+    train_loss = train_l2_full / ntrain
+
+    # test_l2_step = 0
+    # test_l2_full = 0
+    # with torch.no_grad():
+    #     for xx, yy in test_loader:
+    #         loss = 0
+    #         xx = xx.to(device)
+    #         yy = yy.to(device)
+
+    #         for t in range(0, T, step):
+    #             y = yy[..., t:t + step]
+    #             im = model(xx)
+    #             loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+
+    #             if t == 0:
+    #                 pred = im
+    #             else:
+    #                 pred = torch.cat((pred, im), -1)
+
+    #         xx = torch.cat((xx[..., step:], im), dim=-1)
+
+    #         # pred = y_normalizer.decode(pred)
+
+    #         test_l2_step += loss.item()
+    #         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
+    #         test_l2_full += l2_full.item()
+
+    # t2 = default_timer()
+    # scheduler.step()
+    # test_loss = test_l2_full / ntest
+
+
+    test_loss = 0 
     with torch.no_grad():
         for xx, yy in test_loader:
-            loss = 0
-            xx = xx.to(device)
-            yy = yy.to(device)
+            xx, yy = xx.to(device), yy.to(device)
 
             for t in range(0, T, step):
                 y = yy[..., t:t + step]
-                im = model(xx)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                out = model(xx)
 
                 if t == 0:
-                    pred = im
+                    pred = out
                 else:
-                    pred = torch.cat((pred, im), -1)
+                    pred = torch.cat((pred, out), -1)       
 
-            xx = torch.cat((xx[..., step:], im), dim=-1)
+                xx = torch.cat((xx[..., step:], out), dim=-1)
+            test_loss += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item() 
+        test_loss = test_loss / ntest
 
-            # pred = y_normalizer.decode(pred)
 
-            test_l2_step += loss.item()
-            l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
-            test_l2_full += l2_full.item()
-
-    t2 = default_timer()
-    scheduler.step()
-
-    train_loss = train_l2_full / ntrain
-    test_loss = test_l2_full / ntest
-
-    print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss per step: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_l2_step / ntest / (T / step), test_loss))
+    print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_loss))
 
     run.log_metrics({'Train Loss': train_loss, 
                     'Test Loss': test_loss})
@@ -787,7 +806,7 @@ with torch.no_grad():
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
-            loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            # loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             if t == 0:
                 pred = out
@@ -931,35 +950,39 @@ run.close()
 
 # %%
 
-#Plotting the Impact 
-import matplotlib as mpl
+# #Plotting the Impact 
+# import matplotlib as mpl
 
-plt.grid()
-# plt.legend()
-plt.xlabel('Time Steps')
-plt.ylabel('NMAE ')
-mpl.rcParams['xtick.minor.visible']=True
-mpl.rcParams['font.size']=45
-mpl.rcParams['figure.figsize']=(16,16)
-mpl.rcParams['xtick.minor.visible']=True
-mpl.rcParams['axes.linewidth']= 3
-mpl.rcParams['axes.titlepad'] = 20
-plt.rcParams['xtick.major.size'] =15
-plt.rcParams['ytick.major.size'] =15
-plt.rcParams['xtick.minor.size'] =10
-plt.rcParams['ytick.minor.size'] =10
-plt.rcParams['xtick.major.width'] =5
-plt.rcParams['ytick.major.width'] =5
-plt.rcParams['xtick.minor.width'] =5
-plt.rcParams['ytick.minor.width'] =5
-mpl.rcParams['axes.titlepad'] = 20
-mpl.rcParams['lines.linewidth'] = 3
+# plt.grid()
+# # plt.legend()
+# plt.xlabel('Time Steps')
+# plt.ylabel('NMAE ')
+# mpl.rcParams['xtick.minor.visible']=True
+# mpl.rcParams['font.size']=45
+# mpl.rcParams['figure.figsize']=(16,16)
+# mpl.rcParams['xtick.minor.visible']=True
+# mpl.rcParams['axes.linewidth']= 3
+# mpl.rcParams['axes.titlepad'] = 20
+# plt.rcParams['xtick.major.size'] =15
+# plt.rcParams['ytick.major.size'] =15
+# plt.rcParams['xtick.minor.size'] =10
+# plt.rcParams['ytick.minor.size'] =10
+# plt.rcParams['xtick.major.width'] =5
+# plt.rcParams['ytick.major.width'] =5
+# plt.rcParams['xtick.minor.width'] =5
+# plt.rcParams['ytick.minor.width'] =5
+# mpl.rcParams['axes.titlepad'] = 20
+# mpl.rcParams['lines.linewidth'] = 3
 
 
-ntrain = [250, 500, 750, 1000, 1250, 1500, 1750]
-mse = [0.0004592, 0.0003086, 0.0003048, 0.0002664, 0.0002605,0.0002423, 3.213e-05]
-plt.xlabel('Training Size')
-plt.ylabel('NMAE ')
-plt.plot(ntrain, mse, alpha=0.8,  color = 'royalblue', ls='-', linewidth=5)
+# ntrain = [250, 500, 750, 1000, 1250, 1500, 1750]
+# mse = [0.0004592, 0.0003086, 0.0003048, 0.0002664, 0.0002605,0.0002423, 3.213e-05]
+# mae = [0.006354, 0.00527, 0.00512, 0.004839	, 0.004845, 0.004951, 0.002401]
+# plt.xlabel('Training Size')
+# plt.ylabel('NMAE ')
+# plt.plot(ntrain, mae, alpha=0.8,  color = 'royalblue', ls='-', linewidth=5, marker='o', ms=10, mec = 'black')
+# # plt.xticks(ntrain)
+# plt.yticks([0.0020, 0.0035, 0.0050, 0.0065])
+# plt.savefig("data_size.pdf", bbox_inches='tight')
 
 # %%

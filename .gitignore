@@ -17,3 +17,5 @@ Plots/
 #Data
 *.npy
 *.png
+*.svg
+*.pdf

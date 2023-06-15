@@ -35,7 +35,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Loss Function": 'LP Loss',
                  "Spatial Resolution": 1,
                  "Temporal Resolution": 1,
-                 "Gradient Clipping Norm": 1, 
+                 "Gradient Clipping Norm": None, 
                 #  "UQ": 'Dropout',
                 #  "Dropout Rate": 0.9
                  }
@@ -729,45 +729,35 @@ for ep in tqdm(range(epochs)):
         train_l2_full += l2_full.item()
 
         loss.backward()
-        torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=max_grad_clip_norm, norm_type=2.0)
+        # torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=max_grad_clip_norm, norm_type=2.0)
 
         # l2_full.backward()
         optimizer.step()
 
 
-    test_l2_step = 0
-    test_l2_full = 0
+    train_loss = train_l2_full / ntrain
+
+#Validation Loop
+    test_loss = 0 
     with torch.no_grad():
         for xx, yy in test_loader:
-            loss = 0
-            xx = xx.to(device)
-            yy = yy.to(device)
+            xx, yy = xx.to(device), yy.to(device)
 
             for t in range(0, T, step):
                 y = yy[..., t:t + step]
-                im = model(xx)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                out = model(xx)
 
                 if t == 0:
-                    pred = im
+                    pred = out
                 else:
-                    pred = torch.cat((pred, im), -1)
+                    pred = torch.cat((pred, out), -1)       
 
-            xx = torch.cat((xx[..., step:], im), dim=-1)
+                xx = torch.cat((xx[..., step:], out), dim=-1)
+            test_loss += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item() 
+        test_loss = test_loss / ntest
 
-            # pred = y_normalizer.decode(pred)
 
-            test_l2_step += loss.item()
-            l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
-            test_l2_full += l2_full.item()
-
-    t2 = default_timer()
-    scheduler.step()
-
-    train_loss = train_l2_full / ntrain
-    test_loss = test_l2_full / ntest
-
-    print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss per step: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_l2_step / ntest / (T / step), test_loss))
+    print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_loss))
 
     run.log_metrics({'Train Loss': train_loss, 
                     'Test Loss': test_loss})
@@ -793,7 +783,7 @@ with torch.no_grad():
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
-            loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            # loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             if t == 0:
                 pred = out

@@ -850,21 +850,6 @@ for ii in range(len(models)):
 
 # %%
 import matplotlib as mpl
-plt.figure()
-plt.plot(np.arange(T_in, T_in + T), model_errs[0], label='Mode=2', alpha=0.8,  color = 'royalblue', ls='--', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), model_errs[1], label='Mode=4', alpha=0.8,  color = 'maroon', ls='--', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), model_errs[2], label='Mode=8', alpha=0.8,  color = 'black', ls='--', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), model_errs[3], label='Mode=16', alpha=0.8,  color = 'firebrick', ls='--', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), model_errs[4], label='Mode=32', alpha=0.8,  color = 'teal', ls='--', linewidth=5)
-
-# plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density - Multi', alpha=0.7,  color = 'navy', linewidth=3)
-# plt.plot(np.arange(T_in, T_in + T), err_phi_solo, label='Potential - Single', alpha=0.8,  color = 'mediumseagreen', ls='--', linewidth=3)
-# plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential - Multi', alpha=0.7,  color = 'darkgreen', linewidth=3)
-# plt.plot(np.arange(T_in, T_in + T), err_T_solo, label='Temp - Single', alpha=0.8,  color = 'lightcoral', ls='--', linewidth=3)
-# plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp - Multi', alpha=0.7,  color = 'maroon', linewidth=3)
-plt.legend()
-plt.xlabel('Time Steps')
-plt.ylabel('NMAE ')
 mpl.rcParams['xtick.minor.visible']=True
 mpl.rcParams['font.size']=45
 mpl.rcParams['figure.figsize']=(16,16)
@@ -880,6 +865,26 @@ plt.rcParams['ytick.major.width'] =5
 plt.rcParams['xtick.minor.width'] =5
 plt.rcParams['ytick.minor.width'] =5
 mpl.rcParams['axes.titlepad'] = 20
+mpl.rcParams['lines.linewidth'] = 5
+
+plt.figure()
+plt.grid()
+plt.plot(np.arange(T_in, T_in + T), model_errs[0], label='Mode=2', alpha=0.8,  color = 'royalblue', ls='--')
+plt.plot(np.arange(T_in, T_in + T), model_errs[1], label='Mode=4', alpha=0.8,  color = 'maroon', ls='--')
+plt.plot(np.arange(T_in, T_in + T), model_errs[2], label='Mode=8', alpha=0.8,  color = 'black', ls='--')
+plt.plot(np.arange(T_in, T_in + T), model_errs[3], label='Mode=16', alpha=0.8,  color = 'firebrick', ls='--')
+plt.plot(np.arange(T_in, T_in + T), model_errs[4], label='Mode=32', alpha=0.8,  color = 'teal', ls='--')
+
+# plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density - Multi', alpha=0.7,  color = 'navy', linewidth=3)
+# plt.plot(np.arange(T_in, T_in + T), err_phi_solo, label='Potential - Single', alpha=0.8,  color = 'mediumseagreen', ls='--', linewidth=3)
+# plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential - Multi', alpha=0.7,  color = 'darkgreen', linewidth=3)
+# plt.plot(np.arange(T_in, T_in + T), err_T_solo, label='Temp - Single', alpha=0.8,  color = 'lightcoral', ls='--', linewidth=3)
+# plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp - Multi', alpha=0.7,  color = 'maroon', linewidth=3)
+plt.legend()
+plt.xlabel('Time Steps')
+plt.ylabel('NMAE ')
+plt.savefig("mode_ablation_errors.pdf", bbox_inches='tight')
+plt.savefig("mode_ablation_errors.svg", bbox_inches='tight')
 # %%
 
 idx = 8
