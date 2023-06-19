@@ -44,9 +44,10 @@ configuration = {"Case": 'Multi-Blobs',
 from simvue import Run
 run = Run()
 run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Data Size", "Test Loss" , "T_norm_1e7"], metadata=configuration)
+
 # %% 
 import os 
-CODE = ['FNO_Multiple_dataset_size.py']
+CODE = ['FNO_multiple.py']
 
 # Save code files
 for code_file in CODE:
@@ -194,115 +195,116 @@ class RangeNormalizer(object):
         self.a = self.a.cpu()
         self.b = self.b.cpu()
 
-# #normalization, rangewise but single value. 
-# class MinMax_Normalizer(object):
-#     def __init__(self, x, low=0.0, high=1.0):
-#         super(MinMax_Normalizer, self).__init__()
-#         min_u = torch.min(x[:,0,:,:,:])
-#         max_u = torch.max(x[:,0,:,:,:])
 
-#         self.a_u = (high - low)/(max_u - min_u)
-#         self.b_u = -self.a_u*max_u + high
-
-#         min_v = torch.min(x[:,1,:,:,:])
-#         max_v = torch.max(x[:,1,:,:,:])
-
-#         self.a_v = (high - low)/(max_v - min_v)
-#         self.b_v = -self.a_v*max_v + high
-
-#         min_p = torch.min(x[:,2,:,:,:])
-#         max_p = torch.max(x[:,2,:,:,:])
-
-#         self.a_p = (high - low)/(max_p - min_p)
-#         self.b_p = -self.a_p*max_p + high
-        
-
-#     def encode(self, x):
-#         s = x.size()
-
-#         u = x[:,0,:,:,:]
-#         u = self.a_u*u + self.b_u
-
-#         v = x[:,1,:,:,:]
-#         v = self.a_v*v + self.b_v
-
-#         p = x[:,2,:,:,:]
-#         p = self.a_p*p + self.b_p
-        
-#         x = torch.stack((u,v,p), dim=1)
-
-#         return x
-
-#     def decode(self, x):
-#         s = x.size()
-
-#         u = x[:,0,:,:,:]
-#         u = (u - self.b_u)/self.a_u
-        
-#         v = x[:,1,:,:,:]
-#         v = (v - self.b_v)/self.a_v
-
-#         p = x[:,2,:,:,:]
-#         p = (p - self.b_p)/self.a_p
-
-
-#         x = torch.stack((u,v,p), dim=1)
-
-#         return x
-
-#     def cuda(self):
-#         self.a_u = self.a_u.cuda()
-#         self.b_u = self.b_u.cuda()
-        
-#         self.a_v = self.a_v.cuda()
-#         self.b_v = self.b_v.cuda() 
-
-#         self.a_p = self.a_p.cuda()
-#         self.b_p = self.b_p.cuda()
-
-
-#     def cpu(self):
-#         self.a_u = self.a_u.cpu()
-#         self.b_u = self.b_u.cpu()
-        
-#         self.a_v = self.a_v.cpu()
-#         self.b_v = self.b_v.cpu()
-
-#         self.a_p = self.a_p.cpu()
-#         self.b_p = self.b_p.cpu()
-
-
-#normalization, rangewise but across the full domain 
+#normalization, rangewise but single value. 
 class MinMax_Normalizer(object):
-    def __init__(self, x, low=-1.0, high=1.0):
+    def __init__(self, x, low=0.0, high=1.0):
         super(MinMax_Normalizer, self).__init__()
-        mymin = torch.min(x)
-        mymax = torch.max(x)
+        min_u = torch.min(x[:,0,:,:,:])
+        max_u = torch.max(x[:,0,:,:,:])
 
-        self.a = (high - low)/(mymax - mymin)
-        self.b = -self.a*mymax + high
+        self.a_u = (high - low)/(max_u - min_u)
+        self.b_u = -self.a_u*max_u + high
+
+        min_v = torch.min(x[:,1,:,:,:])
+        max_v = torch.max(x[:,1,:,:,:])
+
+        self.a_v = (high - low)/(max_v - min_v)
+        self.b_v = -self.a_v*max_v + high
+
+        min_p = torch.min(x[:,2,:,:,:])
+        max_p = torch.max(x[:,2,:,:,:])
+
+        self.a_p = (high - low)/(max_p - min_p)
+        self.b_p = -self.a_p*max_p + high
+        
 
     def encode(self, x):
         s = x.size()
-        x = x.reshape(s[0], -1)
-        x = self.a*x + self.b
-        x = x.view(s)
+
+        u = x[:,0,:,:,:]
+        u = self.a_u*u + self.b_u
+
+        v = x[:,1,:,:,:]
+        v = self.a_v*v + self.b_v
+
+        p = x[:,2,:,:,:]
+        p = self.a_p*p + self.b_p
+        
+        x = torch.stack((u,v,p), dim=1)
+
         return x
 
     def decode(self, x):
         s = x.size()
-        x = x.reshape(s[0], -1)
-        x = (x - self.b)/self.a
-        x = x.view(s)
+
+        u = x[:,0,:,:,:]
+        u = (u - self.b_u)/self.a_u
+        
+        v = x[:,1,:,:,:]
+        v = (v - self.b_v)/self.a_v
+
+        p = x[:,2,:,:,:]
+        p = (p - self.b_p)/self.a_p
+
+
+        x = torch.stack((u,v,p), dim=1)
+
         return x
 
     def cuda(self):
-        self.a = self.a.cuda()
-        self.b = self.b.cuda()
+        self.a_u = self.a_u.cuda()
+        self.b_u = self.b_u.cuda()
+        
+        self.a_v = self.a_v.cuda()
+        self.b_v = self.b_v.cuda() 
+
+        self.a_p = self.a_p.cuda()
+        self.b_p = self.b_p.cuda()
+
 
     def cpu(self):
-        self.a = self.a.cpu()
-        self.b = self.b.cpu()
+        self.a_u = self.a_u.cpu()
+        self.b_u = self.b_u.cpu()
+        
+        self.a_v = self.a_v.cpu()
+        self.b_v = self.b_v.cpu()
+
+        self.a_p = self.a_p.cpu()
+        self.b_p = self.b_p.cpu()
+
+
+# #normalization, rangewise but across the full domain 
+# class MinMax_Normalizer(object):
+#     def __init__(self, x, low=-1.0, high=1.0):
+#         super(MinMax_Normalizer, self).__init__()
+#         mymin = torch.min(x)
+#         mymax = torch.max(x)
+
+#         self.a = (high - low)/(mymax - mymin)
+#         self.b = -self.a*mymax + high
+
+#     def encode(self, x):
+#         s = x.size()
+#         x = x.reshape(s[0], -1)
+#         x = self.a*x + self.b
+#         x = x.view(s)
+#         return x
+
+#     def decode(self, x):
+#         s = x.size()
+#         x = x.reshape(s[0], -1)
+#         x = (x - self.b)/self.a
+#         x = x.view(s)
+#         return x
+
+#     def cuda(self):
+#         self.a = self.a.cuda()
+#         self.b = self.b.cuda()
+
+#     def cpu(self):
+#         self.a = self.a.cpu()
+#         self.b = self.b.cpu()
 
 
 # %%
@@ -358,9 +360,9 @@ class LpLoss(object):
 
 
 # %% 
-x_grid = np.arange(0, 100)
-y_grid = np.arange(0, 100)
-S = 100 #Grid Size
+x_grid = np.arange(0, 106)
+y_grid = np.arange(0, 106)
+S = 106 #Grid Size
 size_x = S
 size_y = S
 
@@ -578,7 +580,7 @@ class FNO_multi(nn.Module):
         return c
 
 # model = FU_Net(modes, modes, width_vars, width_time)
-# model(torch.ones(5, 3, 100, 100, T_in)).shape
+# model(torch.ones(5, 3, 106, 106, T_in)).shape
 
 
 # %%
@@ -586,9 +588,6 @@ class FNO_multi(nn.Module):
 ################################################################
 # Loading Data 
 ################################################################
-
-# %%
-# data = data_loc + '/Data/MHD_multi_blobs.npz'
 data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
 # %%
 field = configuration['Field']
@@ -633,8 +632,6 @@ batch_size = configuration['Batch Size']
 batch_size2 = batch_size
 
 t1 = default_timer()
-
-
 
 train_a = uvp[:ntrain,:,:,:,:T_in]
 train_u = uvp[:ntrain,:,:,:,T_in:T+T_in]
@@ -730,37 +727,7 @@ for ep in tqdm(range(epochs)):
 
     train_loss = train_l2_full / ntrain
 
-    # test_l2_step = 0
-    # test_l2_full = 0
-    # with torch.no_grad():
-    #     for xx, yy in test_loader:
-    #         loss = 0
-    #         xx = xx.to(device)
-    #         yy = yy.to(device)
-
-    #         for t in range(0, T, step):
-    #             y = yy[..., t:t + step]
-    #             im = model(xx)
-    #             loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-
-    #             if t == 0:
-    #                 pred = im
-    #             else:
-    #                 pred = torch.cat((pred, im), -1)
-
-    #         xx = torch.cat((xx[..., step:], im), dim=-1)
-
-    #         # pred = y_normalizer.decode(pred)
-
-    #         test_l2_step += loss.item()
-    #         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
-    #         test_l2_full += l2_full.item()
-
-    # t2 = default_timer()
-    # scheduler.step()
-    # test_loss = test_l2_full / ntest
-
-
+#Validation Loop
     test_loss = 0 
     with torch.no_grad():
         for xx, yy in test_loader:
@@ -785,6 +752,7 @@ for ep in tqdm(range(epochs)):
     run.log_metrics({'Train Loss': train_loss, 
                     'Test Loss': test_loss})
 
+
 train_time = time.time() - start_time
 # %%
 #Saving the Model
@@ -806,7 +774,7 @@ with torch.no_grad():
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
-            # loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             if t == 0:
                 pred = out
@@ -949,6 +917,7 @@ for output_file in OUTPUTS:
 run.close()
 
 # %%
+
 
 # #Plotting the Impact 
 # import matplotlib as mpl

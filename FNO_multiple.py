@@ -43,7 +43,7 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Gradient Clipping"], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
 
 # %% 
 import os 

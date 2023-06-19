@@ -7,7 +7,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
-                 "Field": 'Phi', #Variable we are modelling - Phi, rho, T
+                 "Field": 'T', #Variable we are modelling - Phi, rho, T
                  "Type": '2D Time', #FNO Architecture
                  "Epochs": 500, 
                  "Batch Size": 10,
@@ -34,7 +34,7 @@ configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
 #Simvue Setup. If not using comment out this section and anything with run
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs'], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'Individual', 'SecondGen_Data'], metadata=configuration)
 
 # %% 
 import os 
@@ -292,7 +292,7 @@ class LpLoss(object):
 #         self.std = self.std.cpu()
 # # additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
 # additive_noise.cuda()
-
+# %%
 ################################################################
 # fourier layer
 ################################################################
@@ -336,11 +336,33 @@ class SpectralConv2d(nn.Module):
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
 
+class Fourier_Layer(nn.Module):
+    def __init__(self, modes1, modes2, width):
+        super(Fourier_Layer, self).__init__()
+
+
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.width = width
+
+        self.conv = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.w = nn.Conv2d(self.width, self.width, 1)
+    
+    
+    def forward(self, x):
+
+        x1 = self.conv(x)
+        x2 = self.w(x)
+        x = x1+x2
+        x = F.gelu(x)
+        return x 
+
+
 # %%
 
-class FNO2d(nn.Module):
+class FNO(nn.Module):
     def __init__(self, modes1, modes2, width):
-        super(FNO2d, self).__init__()
+        super(FNO, self).__init__()
 
         """
         The overall network. It contains 4 layers of the Fourier layer.
@@ -357,30 +379,28 @@ class FNO2d(nn.Module):
 
         self.modes1 = modes1
         self.modes2 = modes2
-        self.width = width
+        self.width= width
+
         self.fc0 = nn.Linear(T_in+2, self.width)
-        # input channel is 12: the solution of the previous T_in timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
 
-        self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv3 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv4 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.conv5 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        # self.padding = 8 # pad the domain if input is non-periodic
 
+        self.f0 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f1 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f2 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f3 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f4 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f5 = Fourier_Layer(self.modes1, self.modes2, self.width)
 
-        self.w0 = nn.Conv2d(self.width, self.width, 1)
-        self.w1 = nn.Conv2d(self.width, self.width, 1)
-        self.w2 = nn.Conv2d(self.width, self.width, 1)
-        self.w3 = nn.Conv2d(self.width, self.width, 1)
-        self.w4 = nn.Conv2d(self.width, self.width, 1)
-        self.w5 = nn.Conv2d(self.width, self.width, 1)
+        # self.dropout = nn.Dropout(p=0.1)
 
         # self.norm = nn.InstanceNorm2d(self.width)
         self.norm = nn.Identity()
 
+
         self.fc1 = nn.Linear(self.width, 128)
         self.fc2 = nn.Linear(128, step)
+
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
@@ -388,38 +408,30 @@ class FNO2d(nn.Module):
 
         x = self.fc0(x)
         x = x.permute(0, 3, 1, 2)
+        # x = self.dropout(x)
 
-        x1 = self.norm(self.conv0(self.norm(x)))
-        x2 = self.w0(x)
-        x = x1+x2
-        x = F.gelu(x)
+        # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
-        x1 = self.norm(self.conv1(self.norm(x)))
-        x2 = self.w1(x)
-        x = x1+x2
-        x = F.gelu(x)
+        x0 = self.f0(x)
+        x = self.f1(x)
+        x = self.f2(x) + x0 
+        # x = self.dropout(x)
+        x1 = self.f3(x)
+        x = self.f4(x)
+        x = self.f5(x) + x1 
 
-        x1 = self.norm(self.conv2(self.norm(x)))
-        x2 = self.w2(x)
-        x = x1+x2
-        x = F.gelu(x)
+        # x = self.dropout(x)
 
-        x1 = self.norm(self.conv3(self.norm(x)))
-        x2 = self.w3(x)
-        x = x1+x2
-
-        x1 = self.norm(self.conv4(self.norm(x)))
-        x2 = self.w4(x)
-        x = x1+x2
-
-        x1 = self.norm(self.conv5(self.norm(x)))
-        x2 = self.w5(x)
-        x = x1+x2
+        # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
 
         x = x.permute(0, 2, 3, 1)
+        x = x 
+
         x = self.fc1(x)
         x = F.gelu(x)
+        # x = self.dropout(x)
         x = self.fc2(x)
+        
         return x
 
 #Using x and y values from the simulation discretisation 
@@ -440,12 +452,14 @@ class FNO2d(nn.Module):
     #     gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
     #     return torch.cat((gridx, gridy), dim=-1).to(device)
 
+
     def count_params(self):
         c = 0
         for p in self.parameters():
             c += reduce(operator.mul, list(p.size()))
 
         return c
+
 
 # %%
 
@@ -454,7 +468,8 @@ class FNO2d(nn.Module):
 ################################################################
 
 # %%
-data = data_loc + '/Data/MHD_multi_blobs.npz'
+# data = data_loc + '/Data/MHD_multi_blobs.npz'
+data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
 
 # %%
 field = configuration['Field']
@@ -544,7 +559,7 @@ print('preprocessing finished, time used:', t2-t1)
 ################################################################
 
 #Instantiating the Model. 
-model = FNO2d(modes, modes, width)
+model = FNO(modes, modes, width)
 # model = model.double()
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
