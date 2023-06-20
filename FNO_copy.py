@@ -7,7 +7,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
-                 "Field": 'Phi', #Variable we are modelling - Phi, rho, T
+                 "Field": 'rho', #Variable we are modelling - Phi, rho, T
                  "Type": '2D Time', #FNO Architecture
                  "Epochs": 500, 
                  "Batch Size": 10,
@@ -507,14 +507,6 @@ u = u.permute(0, 2, 3, 1)
 
 #At this stage the data needs to be [Batch_Size, X, Y, T]
 
-train_a = u[:ntrain,:,:,:T_in]
-train_u = u[:ntrain,:,:,T_in:T+T_in]
-
-test_a = u[-ntest:,:,:,:T_in]
-test_u = u[-ntest:,:,:,T_in:T+T_in]
-
-print(train_u.shape)
-print(test_u.shape)
 
 # %%
 #Normalising the train and test datasets with the preferred normalisation. 
@@ -522,25 +514,32 @@ print(test_u.shape)
 norm_strategy = configuration['Normalisation Strategy']
 
 if norm_strategy == 'Min-Max':
-    a_normalizer = MinMax_Normalizer(train_a)
-    y_normalizer = MinMax_Normalizer(train_u)
+    normalizer = MinMax_Normalizer(u)
 
 if norm_strategy == 'Range':
-    a_normalizer = RangeNormalizer(train_a)
-    y_normalizer = RangeNormalizer(train_u)
+    normalizer = RangeNormalizer(u)
 
 if norm_strategy == 'Gaussian':
-    a_normalizer = GaussianNormalizer(train_a)
-    y_normalizer = GaussianNormalizer(train_u)
+    normalizer = GaussianNormalizer(u)
 
 
+#Splitting into test and train. 
 
-train_a = a_normalizer.encode(train_a)
-test_a = a_normalizer.encode(test_a)
+train_a = u[:ntrain,:,:,:T_in]
+train_u = u[:ntrain,:,:,T_in:T+T_in]
 
-train_u = y_normalizer.encode(train_u)
-test_u_encoded = y_normalizer.encode(test_u)
+test_a = u[-ntest:,:,:,:T_in]
+test_u = u[-ntest:,:,:,T_in:T+T_in]
 
+train_a = normalizer.encode(train_a)
+test_a = normalizer.encode(test_a)
+
+train_u = normalizer.encode(train_u)
+test_u_encoded = normalizer.encode(test_u)
+
+
+print(train_u.shape)
+print(test_u.shape)
 # %%
 #Setting up the dataloaders for the test and train datasets. 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)

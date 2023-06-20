@@ -537,7 +537,6 @@ if norm_strategy == 'Gaussian':
     y_normalizer = GaussianNormalizer(train_u)
 
 
-
 train_a = a_normalizer.encode(train_a)
 test_a = a_normalizer.encode(test_a)
 
