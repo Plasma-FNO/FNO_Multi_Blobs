@@ -7,7 +7,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
-                 "Field": 'rho', #Variable we are modelling - Phi, rho, T
+                 "Field": 'Phi', #Variable we are modelling - Phi, rho, T
                  "Type": '2D Time', #FNO Architecture
                  "Epochs": 500, 
                  "Batch Size": 10,
@@ -571,7 +571,7 @@ myloss = LpLoss(size_average=False)
 
 epochs = configuration['Epochs']
 if torch.cuda.is_available():
-    y_normalizer.cuda()
+    normalizer.cuda()
 
 # %%
 #Training Loop
@@ -631,6 +631,7 @@ for ep in tqdm(range(epochs)): #Training Loop - Epochwise
             test_loss += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item() 
         test_loss = test_loss / ntest
 
+    t2 = default_timer()
 
     print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_loss))
 
@@ -690,7 +691,7 @@ run.update_metadata({'Training Time': float(train_time),
                      'LP Test Error': float(LP_error)
                     })
 
-pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
+pred_set = normalizer.decode(pred_set.to(device)).cpu()
 
 # %%
 #Plotting the comparison plots

@@ -756,6 +756,7 @@ for ep in tqdm(range(epochs)):
             test_loss += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item() 
         test_loss = test_loss / ntest
 
+    t2 = default_timer()
 
     print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_loss))
 
