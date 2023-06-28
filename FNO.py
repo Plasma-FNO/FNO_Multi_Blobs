@@ -468,8 +468,8 @@ class FNO(nn.Module):
 ################################################################
 
 # %%
-# data = data_loc + '/Data/MHD_multi_blobs.npz'
-data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
+data = data_loc + '/Data/MHD_multi_blobs.npz'
+# data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
 
 # %%
 field = configuration['Field']
@@ -484,6 +484,7 @@ if configuration['Log Normalisation'] == 'Yes':
     u_sol = np.log(u_sol)
 
 u_sol = np.nan_to_num(u_sol)
+u_sol = np.delete(u_sol, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0)
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)

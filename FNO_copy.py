@@ -7,7 +7,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
-                 "Field": 'Phi', #Variable we are modelling - Phi, rho, T
+                 "Field": 'T', #Variable we are modelling - Phi, rho, T
                  "Type": '2D Time', #FNO Architecture
                  "Epochs": 500, 
                  "Batch Size": 10,
@@ -34,7 +34,7 @@ configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
 #Simvue Setup. If not using comment out this section and anything with run
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs'], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'Individual'], metadata=configuration)
 
 # %% 
 import os 
@@ -193,6 +193,7 @@ class MinMax_Normalizer(object):
         super(MinMax_Normalizer, self).__init__()
         mymin = torch.min(x)
         mymax = torch.max(x)
+        print(mymin, mymax)
 
         self.a = (high - low)/(mymax - mymin)
         self.b = -self.a*mymax + high
@@ -467,6 +468,7 @@ class FNO(nn.Module):
 
 # %%
 data = data_loc + '/Data/MHD_multi_blobs.npz'
+# data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
 
 # %%
 field = configuration['Field']
@@ -481,6 +483,7 @@ if configuration['Log Normalisation'] == 'Yes':
     u_sol = np.log(u_sol)
 
 u_sol = np.nan_to_num(u_sol)
+# u_sol = np.delete(u_sol, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0)
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
@@ -507,6 +510,14 @@ u = u.permute(0, 2, 3, 1)
 
 #At this stage the data needs to be [Batch_Size, X, Y, T]
 
+train_a = u[:ntrain,:,:,:T_in]
+train_u = u[:ntrain,:,:,T_in:T+T_in]
+
+test_a = u[-ntest:,:,:,:T_in]
+test_u = u[-ntest:,:,:,T_in:T+T_in]
+
+print(train_u.shape)
+print(test_u.shape)
 
 # %%
 #Normalising the train and test datasets with the preferred normalisation. 
@@ -514,32 +525,25 @@ u = u.permute(0, 2, 3, 1)
 norm_strategy = configuration['Normalisation Strategy']
 
 if norm_strategy == 'Min-Max':
-    normalizer = MinMax_Normalizer(u)
+    a_normalizer = MinMax_Normalizer(train_a)
+    y_normalizer = MinMax_Normalizer(train_u)
 
 if norm_strategy == 'Range':
-    normalizer = RangeNormalizer(u)
+    a_normalizer = RangeNormalizer(train_a)
+    y_normalizer = RangeNormalizer(train_u)
 
 if norm_strategy == 'Gaussian':
-    normalizer = GaussianNormalizer(u)
+    a_normalizer = GaussianNormalizer(train_a)
+    y_normalizer = GaussianNormalizer(train_u)
 
 
-#Splitting into test and train. 
 
-train_a = u[:ntrain,:,:,:T_in]
-train_u = u[:ntrain,:,:,T_in:T+T_in]
+train_a = a_normalizer.encode(train_a)
+test_a = a_normalizer.encode(test_a)
 
-test_a = u[-ntest:,:,:,:T_in]
-test_u = u[-ntest:,:,:,T_in:T+T_in]
+train_u = y_normalizer.encode(train_u)
+test_u_encoded = y_normalizer.encode(test_u)
 
-train_a = normalizer.encode(train_a)
-test_a = normalizer.encode(test_a)
-
-train_u = normalizer.encode(train_u)
-test_u_encoded = normalizer.encode(test_u)
-
-
-print(train_u.shape)
-print(test_u.shape)
 # %%
 #Setting up the dataloaders for the test and train datasets. 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
@@ -571,7 +575,7 @@ myloss = LpLoss(size_average=False)
 
 epochs = configuration['Epochs']
 if torch.cuda.is_available():
-    normalizer.cuda()
+    y_normalizer.cuda()
 
 # %%
 #Training Loop
@@ -632,6 +636,7 @@ for ep in tqdm(range(epochs)): #Training Loop - Epochwise
         test_loss = test_loss / ntest
 
     t2 = default_timer()
+    scheduler.step()
 
     print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_loss))
 
@@ -691,7 +696,7 @@ run.update_metadata({'Training Time': float(train_time),
                      'LP Test Error': float(LP_error)
                     })
 
-pred_set = normalizer.decode(pred_set.to(device)).cpu()
+pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 
 # %%
 #Plotting the comparison plots

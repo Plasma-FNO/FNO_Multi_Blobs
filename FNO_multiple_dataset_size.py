@@ -43,7 +43,7 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Data Size", "Test Loss" , "T_norm_1e7"], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Data Size", 'Norm-VariableWise'], metadata=configuration)
 
 # %% 
 import os 
@@ -614,6 +614,7 @@ p = p.permute(0, 2, 3, 1)
 t_res = configuration['Temporal Resolution']
 x_res = configuration['Spatial Resolution']
 uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
+uvp = np.delete(uvp, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0)
 
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
