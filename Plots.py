@@ -676,7 +676,9 @@ print('preprocessing finished, time used:', t2-t1)
 ################################################################
 
 model = FNO_multi(16, 16, width_vars, width_time)
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_sour-goalie.pth', map_location=torch.device('cpu')))
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_sour-goalie.pth', map_location=torch.device('cpu'))) #250 benchmark 
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_reduced-fort.pth', map_location=torch.device('cpu'))) #1500 benchmark 
+
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_silver-tuba.pth', map_location=torch.device('cpu'))) #Min-Max different norms for each var
 
 model.to(device)

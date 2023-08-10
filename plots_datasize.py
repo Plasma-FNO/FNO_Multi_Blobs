@@ -1,4 +1,3 @@
-          
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -6,7 +5,7 @@ Created on 6 Jan 2023
 @author: vgopakum
 FNO modelled over the MHD data built using JOREK for multi-blob diffusion. 
 
-Multivariable FNO
+Multivariable FNO -- Plotting for the MV fno varying dataset study
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
@@ -20,7 +19,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
-                 "Normalisation Strategy": 'Min-Max. Single',
+                 "Normalisation Strategy": 'Min-Max',
                  "Instance Norm": 'No',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'Yes',
@@ -35,32 +34,15 @@ configuration = {"Case": 'Multi-Blobs',
                  "Loss Function": 'LP Loss',
                  "Spatial Resolution": 1,
                  "Temporal Resolution": 1,
-                 "Gradient Clipping Norm": None, 
+                 "Ntrain": 1500
                 #  "UQ": 'Dropout',
                 #  "Dropout Rate": 0.9
                  }
 
-# %%
-from simvue import Run
-run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "No Padding", "discretisation-invariant"], metadata=configuration)
-
 # %% 
+
+#Importing the necessary packages. 
 import os 
-CODE = ['FNO_multiple.py']
-
-# Save code files
-for code_file in CODE:
-    if os.path.isfile(code_file):
-        run.save(code_file, 'code')
-    elif os.path.isdir(code_file):
-        run.save_directory(code_file, 'code', 'text/plain', preserve_path=True)
-    else:
-        print('ERROR: code file %s does not exist' % code_file)
-
-
-# %% 
-
 import numpy as np
 from tqdm import tqdm 
 import torch
@@ -83,16 +65,17 @@ torch.manual_seed(0)
 np.random.seed(0)
 
 # %% 
+#Setting up the directories - data location, model location and plots. 
 path = os.getcwd()
 data_loc = os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))
 # model_loc = os.path.dirname(os.path.dirname(os.getcwd()))
 file_loc = os.getcwd()
-
+# %%
+#Setting up CUDA
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 
-# %%
 ##################################
 #Normalisation Functions 
 ##################################
@@ -136,7 +119,7 @@ class UnitGaussianNormalizer(object):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
 
-# normalization, Gaussian
+# normalization, Gaussian - across the entire dataset
 class GaussianNormalizer(object):
     def __init__(self, x, eps=0.00001):
         super(GaussianNormalizer, self).__init__()
@@ -162,7 +145,7 @@ class GaussianNormalizer(object):
         self.std = self.std.cpu()
 
 
-# normalization, scaling by range
+# normalization, scaling by range - pointwise
 class RangeNormalizer(object):
     def __init__(self, x, low=-1.0, high=1.0):
         super(RangeNormalizer, self).__init__()
@@ -194,6 +177,7 @@ class RangeNormalizer(object):
     def cpu(self):
         self.a = self.a.cpu()
         self.b = self.b.cpu()
+
 
 # #normalization, rangewise but single value. 
 # class MinMax_Normalizer(object):
@@ -277,11 +261,11 @@ class RangeNormalizer(object):
 class MinMax_Normalizer(object):
     def __init__(self, x, low=-1.0, high=1.0):
         super(MinMax_Normalizer, self).__init__()
-        self.mymin = torch.min(x)
-        self.mymax = torch.max(x)
+        mymin = torch.min(x)
+        mymax = torch.max(x)
 
-        self.a = (high - low)/(self.mymax - self.mymin)
-        self.b = -self.a*self.mymax + high
+        self.a = (high - low)/(mymax - mymin)
+        self.b = -self.a*mymax + high
 
     def encode(self, x):
         s = x.size()
@@ -304,6 +288,7 @@ class MinMax_Normalizer(object):
     def cpu(self):
         self.a = self.a.cpu()
         self.b = self.b.cpu()
+
 
 
 # %%
@@ -356,43 +341,6 @@ class LpLoss(object):
 
     def __call__(self, x, y):
         return self.rel(x, y)
-
-
-# %% 
-#Extracting the configuration settings
-
-modes = configuration['Modes']
-width_time = configuration['Width_time']
-width_vars = configuration['Width_vars']
-output_size = configuration['Step']
-
-batch_size = configuration['Batch Size']
-
-batch_size2 = batch_size
-
-t1 = default_timer()
-
-T_in = configuration['T_in']
-T = configuration['T_out']
-step = configuration['Step']
-num_vars = configuration['Variables']
-
-# %%
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# %%
-
-class MLP(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels):
-        super(MLP, self).__init__()
-        self.mlp1 = nn.Conv2d(in_channels, mid_channels, 1)
-        self.mlp2 = nn.Conv2d(mid_channels, out_channels, 1)
-
-    def forward(self, x):
-        x = self.mlp1(x)
-        x = F.gelu(x)
-        x = self.mlp2(x)
-        return x
 
 # %%
 ################################################################
@@ -546,9 +494,9 @@ class FNO_multi(nn.Module):
 #Using x and y values from the simulation discretisation 
     def get_grid(self, shape, device):
         batchsize, num_vars, size_x, size_y = shape[0], shape[1], shape[2], shape[3]
-        gridx = torch.tensor(np.linspace(9.5, 10.5, size_x), dtype=torch.float)
+        gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
         gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
-        gridy = torch.tensor(np.linspace(-0.5, 0.5, size_y), dtype=torch.float)
+        gridy = torch.tensor(y_grid, dtype=torch.float)
         gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1).to(device)
 
@@ -578,10 +526,7 @@ class FNO_multi(nn.Module):
 ################################################################
 # Loading Data 
 ################################################################
-
-# %%
-data = data_loc + '/Data/MHD_multi_blobs.npz'
-# data = data_loc + '/Data/FNO_MHD_data_multi_blob_500x500.npz' # For Performing SuperResolution. 
+data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
 # %%
 field = configuration['Field']
 dims = ['rho', 'Phi', 'T']
@@ -607,21 +552,25 @@ p = p.permute(0, 2, 3, 1)
 t_res = configuration['Temporal Resolution']
 x_res = configuration['Spatial Resolution']
 uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
+uvp = np.delete(uvp, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0)
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
-#Padding Removed 
-uvp = uvp[:, :, 3:-3, 3:-3, :]
-x_grid = x_grid[3:-3]
-y_grid = y_grid[3:-3]
-
-ntrain =240
-ntest = 38
 S = uvp.shape[3] #Grid Size
 size_x = S
 size_y = S
+
+ntrain = configuration['Ntrain']
+ntest = 85
+
+# %% 
+
+modes = configuration['Modes']
+width_time = configuration['Width_time']
+width_vars = configuration['Width_vars']
+output_size = configuration['Step']
 
 batch_size = configuration['Batch Size']
 
@@ -629,7 +578,17 @@ batch_size2 = batch_size
 
 t1 = default_timer()
 
+T_in = configuration['T_in']
+T = configuration['T_out']
+step = configuration['Step']
+num_vars = configuration['Variables']
 
+
+batch_size = configuration['Batch Size']
+
+batch_size2 = batch_size
+
+t1 = default_timer()
 
 train_a = uvp[:ntrain,:,:,:,:T_in]
 train_u = uvp[:ntrain,:,:,:,T_in:T+T_in]
@@ -642,30 +601,40 @@ print(test_u.shape)
 
 
 # %%
-# a_normalizer = RangeNormalizer(train_a)
-a_normalizer = MinMax_Normalizer(train_a)
-# a_normalizer = GaussianNormalizer(train_a)
+#Normalising the train and test datasets with the preferred normalisation. 
+
+norm_strategy = configuration['Normalisation Strategy']
+
+if norm_strategy == 'Min-Max':
+    a_normalizer = MinMax_Normalizer(train_a)
+    y_normalizer = MinMax_Normalizer(train_u)
+
+if norm_strategy == 'Range':
+    a_normalizer = RangeNormalizer(train_a)
+    y_normalizer = RangeNormalizer(train_u)
+
+if norm_strategy == 'Gaussian':
+    a_normalizer = GaussianNormalizer(train_a)
+    y_normalizer = GaussianNormalizer(train_u)
+
+
 
 train_a = a_normalizer.encode(train_a)
 test_a = a_normalizer.encode(test_a)
-
-# y_normalizer = RangeNormalizer(train_u)
-y_normalizer = MinMax_Normalizer(train_u)
-# y_normalizer = GaussianNormalizer(train_u)
 
 train_u = y_normalizer.encode(train_u)
 test_u_encoded = y_normalizer.encode(test_u)
 
 
 # %%
+#Setting up the dataloaders for the test and train datasets. 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
 
 t2 = default_timer()
 print('preprocessing finished, time used:', t2-t1)
 
-
-# %% 
+# %%
 
 ################################################################
 # training and evaluation
@@ -673,97 +642,12 @@ print('preprocessing finished, time used:', t2-t1)
 model = FNO_multi(modes, modes, width_vars, width_time)
 model.to(device)
 
-run.update_metadata({'Number of Params': int(model.count_params())})
-
-
-print("Number of model params : " + str(model.count_params()))
-
-optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_reduced-fort.pth', map_location=torch.device('cpu'))) #250 benchmark 
 
 myloss = LpLoss(size_average=False)
 
-# %%
-epochs = configuration['Epochs']
-if torch.cuda.is_available():
-    y_normalizer.cuda()
+# %% 
 
-# %%
-
-max_grad_clip_norm = configuration['Gradient Clipping Norm']
-
-start_time = time.time()
-for ep in tqdm(range(epochs)):
-    model.train()
-    t1 = default_timer()
-    train_l2_step = 0
-    train_l2_full = 0
-    for xx, yy in train_loader:
-        optimizer.zero_grad()
-        loss = 0
-        xx = xx.to(device)
-        yy = yy.to(device)
-        # xx = additive_noise(xx)
-
-        for t in range(0, T, step):
-            y = yy[..., t:t + step]
-            im = model(xx)
-            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-            # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1)))
-
-            if t == 0:
-                pred = im
-            else:
-                pred = torch.cat((pred, im), -1)
-
-            xx = torch.cat((xx[..., step:], im), dim=-1)
-
-        train_l2_step += loss.item()
-        l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
-        train_l2_full += l2_full.item()
-
-        loss.backward()
-        # torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=max_grad_clip_norm, norm_type=2.0)
-
-        # l2_full.backward()
-        optimizer.step()
-
-
-    train_loss = train_l2_full / ntrain
-
-#Validation Loop
-    test_loss = 0 
-    with torch.no_grad():
-        for xx, yy in test_loader:
-            xx, yy = xx.to(device), yy.to(device)
-
-            for t in range(0, T, step):
-                y = yy[..., t:t + step]
-                out = model(xx)
-
-                if t == 0:
-                    pred = out
-                else:
-                    pred = torch.cat((pred, out), -1)       
-
-                xx = torch.cat((xx[..., step:], out), dim=-1)
-            test_loss += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item() 
-        test_loss = test_loss / ntest
-
-    t2 = default_timer()
-
-    print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_loss))
-
-    run.log_metrics({'Train Loss': train_loss, 
-                    'Test Loss': test_loss})
-
-train_time = time.time() - start_time
-# %%
-#Saving the Model
-model_loc = file_loc + '/Models/FNO_multi_blobs_' + run.name + '.pth'
-torch.save(model.state_dict(),  model_loc)
-
-# %%
 #Testing 
 batch_size = 1
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1, shuffle=False)
@@ -778,7 +662,7 @@ with torch.no_grad():
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
-            # loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
+            loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             if t == 0:
                 pred = out
@@ -804,26 +688,29 @@ print('(MSE) Testing Error: %.3e' % (MSE_error))
 print('(MAE) Testing Error: %.3e' % (MAE_error))
 print('(LP) Testing Error: %.3e' % (LP_error))
 
-run.update_metadata({'Training Time': float(train_time),
-                     'MSE Test Error': float(MSE_error),
-                     'MAE Test Error': float(MAE_error),
-                     'LP Test Error': float(LP_error)
-                    })
 
+pred_set_encoded = pred_set
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
+# %% 
+if configuration["Physics Normalisation"] == 'Yes':
+    pred_set[:,0:1,...] = pred_set[:,0:1,...] * 1e20
+    pred_set[:,1:2,...] = pred_set[:,1:2,...] * 1e6
+    pred_set[:,2:3,...] = pred_set[:,2:3,...] * 1e5
+
+
+    test_u[:,0:1,...] = test_u[:,0:1,...] * 1e20
+    test_u[:,1:2,...] = test_u[:,1:2,...] * 1e6
+    test_u[:,2:3,...] = test_u[:,2:3,...] * 1e5
 
 # %%
 #Plotting the comparison plots
-
 idx = np.random.randint(0,ntest) 
-idx = 5
+# idx = 64 
+# idx = 67
+print(idx)
 
-if configuration['Log Normalisation'] == 'Yes':
-    test_u = torch.exp(test_u)
-    pred_set = torch.exp(pred_set)
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-
-# %%
 output_plot = []
 for dim in range(num_vars):
     u_field = test_u[idx]
@@ -837,23 +724,27 @@ for dim in range(num_vars):
     v_min_3 = torch.min(u_field[dim, :, :, -1])
     v_max_3 = torch.max(u_field[dim, :, :, -1])
 
-    fig = plt.figure(figsize=plt.figaspect(0.5))
+    fig = plt.figure(figsize=(10, 6))
     ax = fig.add_subplot(2,3,1)
     pcm =ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
     # ax.title.set_text('Initial')
     ax.title.set_text('t='+ str(T_in))
     ax.set_ylabel('Solution')
-    fig.colorbar(pcm, pad=0.05)
-
-
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+    
     ax = fig.add_subplot(2,3,2)
     pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
     # ax.title.set_text('Middle')
     ax.title.set_text('t='+ str(int((T+T_in)/2)))
     ax.axes.xaxis.set_ticks([])
     ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
-
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
     ax = fig.add_subplot(2,3,3)
     pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
@@ -861,63 +752,145 @@ for dim in range(num_vars):
     ax.title.set_text('t='+str(T+T_in))
     ax.axes.xaxis.set_ticks([])
     ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
-
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
     u_field = pred_set[idx]
 
     ax = fig.add_subplot(2,3,4)
     pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
     ax.set_ylabel('FNO')
-
-    fig.colorbar(pcm, pad=0.05)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
     ax = fig.add_subplot(2,3,5)
     pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
     ax.axes.xaxis.set_ticks([])
     ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
-
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
     ax = fig.add_subplot(2,3,6)
     pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
     ax.axes.xaxis.set_ticks([])
     ax.axes.yaxis.set_ticks([])
-    fig.colorbar(pcm, pad=0.05)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
-    plt.title(dims[dim])
+# %% 
 
-    output_plot.append(file_loc + '/Plots/MultiBlobs_' + dims[dim] + '_' + run.name + '.png')
-    plt.savefig(output_plot[dim])
+#Error Plots
+idx = np.random.randint(0,ntest) 
+idx = 64
 
-# %%
+output_plot = []
+for dim in range(num_vars):
+    u_field = test_u[idx]
 
+    v_min_1 = torch.min(u_field[dim,:,:,0])
+    v_max_1 = torch.max(u_field[dim,:,:,0])
 
-# %%
+    v_min_2 = torch.min(u_field[dim, :, :, int(T/2)])
+    v_max_2 = torch.max(u_field[dim, :, :, int(T/2)])
 
-INPUTS = []
-OUTPUTS = [model_loc, output_plot[0], output_plot[1], output_plot[2]]
+    v_min_3 = torch.min(u_field[dim, :, :, -1])
+    v_max_3 = torch.max(u_field[dim, :, :, -1])
 
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(3,3,1)
+    pcm =ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+    # ax.title.set_text('Initial')
+    ax.title.set_text('t='+ str(T_in))
+    ax.set_ylabel('Solution')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+    
+    ax = fig.add_subplot(3,3,2)
+    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+    # ax.title.set_text('Middle')
+    ax.title.set_text('t='+ str(int((T+T_in)/2)))
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
-# Save input files
-for input_file in INPUTS:
-    if os.path.isfile(input_file):
-        run.save(input_file, 'input')
-    elif os.path.isdir(input_file):
-        run.save_directory(input_file, 'input', 'text/plain', preserve_path=True)
-    else:
-        print('ERROR: input file %s does not exist' % input_file)
+    ax = fig.add_subplot(3,3,3)
+    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+    # ax.title.set_text('Final')
+    ax.title.set_text('t='+str(T+T_in))
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
+    u_field = pred_set[idx]
 
-# Save output files
-for output_file in OUTPUTS:
-    if os.path.isfile(output_file):
-        run.save(output_file, 'output')
-    elif os.path.isdir(output_file):
-        run.save_directory(output_file, 'output', 'text/plain', preserve_path=True)   
-    else:
-        print('ERROR: output file %s does not exist' % output_file)
+    ax = fig.add_subplot(3,3,4)
+    pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
+    ax.set_ylabel('FNO')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
-run.close()
+    ax = fig.add_subplot(3,3,5)
+    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+
+    ax = fig.add_subplot(3,3,6)
+    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+
+    u_field = torch.abs(test_u[idx] - pred_set[idx])
+
+    ax = fig.add_subplot(3,3,7)
+    pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5])
+    ax.set_ylabel('Abs Error')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+
+    ax = fig.add_subplot(3,3,8)
+    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5])
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
+
+    ax = fig.add_subplot(3,3,9)
+    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5])
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(pcm, cax=cax)
+    cbar.formatter.set_powerlimits((0, 0))
 
 # %%

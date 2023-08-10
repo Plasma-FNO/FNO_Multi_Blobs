@@ -825,7 +825,7 @@ xx = test_a[idx:idx+1]
 yy = test_u_encoded[idx:idx+1,:, :, :10]
 preds = []
 for i in tqdm(range(1000)):
-        preds.append(model(xx).detach().numpy())
+    preds.append(model(xx).detach().numpy())
 
 # %%
 preds_mean = np.mean(preds, axis=0)

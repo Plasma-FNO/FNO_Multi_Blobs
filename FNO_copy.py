@@ -34,7 +34,7 @@ configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
 #Simvue Setup. If not using comment out this section and anything with run
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'Individual'], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'Individual', 'SecondGenData'], metadata=configuration)
 
 # %% 
 import os 
@@ -467,8 +467,8 @@ class FNO(nn.Module):
 ################################################################
 
 # %%
-data = data_loc + '/Data/MHD_multi_blobs.npz'
-# data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
+# data = data_loc + '/Data/MHD_multi_blobs.npz'
+data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
 
 # %%
 field = configuration['Field']
@@ -483,7 +483,7 @@ if configuration['Log Normalisation'] == 'Yes':
     u_sol = np.log(u_sol)
 
 u_sol = np.nan_to_num(u_sol)
-# u_sol = np.delete(u_sol, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0)
+u_sol = np.delete(u_sol, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0)
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
@@ -595,7 +595,7 @@ for ep in tqdm(range(epochs)): #Training Loop - Epochwise
         for t in range(0, T, step): #Training Loop - Time rollouts. 
             y = yy[..., t:t + step]
             im = model(xx)
-            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1)) 
+            loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
             # loss += myloss(im.reshape(batch_size, -1)*torch.log(im.reshape(batch_size, -1)), y.reshape(batch_size, -1)*torch.log(y.reshape(batch_size, -1))) #normalising with log
 
             #Storing the rolled out outputs. 

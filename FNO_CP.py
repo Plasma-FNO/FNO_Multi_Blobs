@@ -522,6 +522,14 @@ print(f"1 - alpha <= empirical coverage is {(1-alpha <= empirical_coverage)}")
 t2 = default_timer()
 print('Conformal by Residual, time used:', t2-t1)
 
+# %%
+#Estimating the tightness of fit
+cov = ((y_response >= prediction_sets[0].numpy()) & (y_response <= prediction_sets[1].numpy()))
+cov_idx = cov.nonzero()
+
+tightness_metric = ((prediction_sets[1][cov_idx].numpy()  - y_response[cov_idx]) +  (y_response[cov_idx] - prediction_sets[0][cov_idx].numpy())).mean()
+print(f"Tightness of the coverage : Average of the distance between error bars {tightness_metric}")
+
 # %% 
 soln_vals = y_normalizer.decode(torch.Tensor(y_response)) * 1e20 
 mean_vals = y_normalizer.decode(torch.Tensor(mean)) * 1e20 
