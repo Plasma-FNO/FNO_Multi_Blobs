@@ -671,3 +671,10 @@ for dim in range(num_vars):
     cbar.formatter.set_powerlimits((0, 0))
 
 # %%
+
+def MAPE():
+    abs_error = (torch.abs(test_u_encoded - pred_set_encoded)) / test_u_encoded
+    sum_abs_error = torch.sum(abs_error)
+    mape_loss = (sum_abs_error / len(test_u_encoded.flatten())) * 100
+    return mape_loss
+# %%
