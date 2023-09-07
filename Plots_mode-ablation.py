@@ -742,13 +742,13 @@ preds = []
 for ii in range(len(models)):
     preds.append(y_normalizer.decode(model_preds[ii].to(device)).cpu())
     preds[ii][:,0:1,...] = preds[ii][:,0:1,...] * 1e20
-    preds[ii][:,1:2,...] = preds[ii][:,1:2,...] * 1e6
-    preds[ii][:,2:3,...] = preds[ii][:,2:3,...] * 1e5
+    preds[ii][:,1:2,...] = preds[ii][:,1:2,...] * 1e5
+    preds[ii][:,2:3,...] = preds[ii][:,2:3,...] * 1e6
 
 
 test_u[:,0:1,...] = test_u[:,0:1,...] * 1e20
-test_u[:,1:2,...] = test_u[:,1:2,...] * 1e6
-test_u[:,2:3,...] = test_u[:,2:3,...] * 1e5
+test_u[:,1:2,...] = test_u[:,1:2,...] * 1e5
+test_u[:,2:3,...] = test_u[:,2:3,...] * 1e6
 # %%
 #Plotting the comparison plots
 
