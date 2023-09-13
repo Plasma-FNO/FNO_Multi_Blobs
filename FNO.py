@@ -7,7 +7,7 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
-                 "Field": 'Phi', #Variable we are modelling - Phi, rho, T
+                 "Field": 'T', #Variable we are modelling - Phi, rho, T
                  "Type": '2D Time', #FNO Architecture
                  "Epochs": 500, 
                  "Batch Size": 10,
@@ -191,8 +191,11 @@ class RangeNormalizer(object):
 class MinMax_Normalizer(object):
     def __init__(self, x, low=-1.0, high=1.0):
         super(MinMax_Normalizer, self).__init__()
-        mymin = torch.min(x)
-        mymax = torch.max(x)
+        # mymin = torch.min(x)
+        # mymax = torch.max(x)
+        mymin = torch.tensor(0.0)
+        mymax = torch.tensor(0.3)
+
 
         self.a = (high - low)/(mymax - mymin)
         self.b = -self.a*mymax + high
@@ -485,6 +488,7 @@ if configuration['Log Normalisation'] == 'Yes':
 
 u_sol = np.nan_to_num(u_sol)
 # u_sol = np.delete(u_sol, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0)
+u_sol= np.delete(u_sol, (153, 229), axis=0) #Outlier T values 
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)

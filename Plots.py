@@ -381,9 +381,7 @@ step = configuration['Step']
 num_vars = configuration['Variables']
 
 
-
 # %%
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -466,7 +464,6 @@ class FNO2d(nn.Module):
 
 
 # %%
-
 class FNO_multi(nn.Module):
     def __init__(self, modes1, modes2, width_vars, width_time):
         super(FNO_multi, self).__init__()
@@ -587,7 +584,8 @@ class FNO_multi(nn.Module):
 ################################################################
 
 # %%
-data = data_loc + '/Data/MHD_multi_blobs.npz'
+# data = data_loc + '/Data/MHD_multi_blobs.npz'
+data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'# new dataset
 
 # %%
 field = configuration['Field']
@@ -614,15 +612,20 @@ p = p.permute(0, 2, 3, 1)
 t_res = configuration['Temporal Resolution']
 x_res = configuration['Spatial Resolution']
 uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
+uvp = np.delete(uvp, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0) #Only for the new dataset 
 
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
+# ntrain =240
+# ntest = 38
 
-ntrain =240
-ntest = 38
+ntrain = 1500 #new dataset
+ntest = 85 #new dataset
+
+
 S = 106 #Grid Size
 size_x = S
 size_y = S
@@ -676,9 +679,10 @@ print('preprocessing finished, time used:', t2-t1)
 ################################################################
 
 model = FNO_multi(16, 16, width_vars, width_time)
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_sour-goalie.pth', map_location=torch.device('cpu'))) #250 benchmark 
-# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_reduced-fort.pth', map_location=torch.device('cpu'))) #1500 benchmark 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_sour-goalie.pth', map_location=torch.device('cpu'))) #250 benchmark 
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_reduced-fort.pth', map_location=torch.device('cpu'))) #1500 benchmark 
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_silver-tuba.pth', map_location=torch.device('cpu'))) #Min-Max different norms for each var
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cold-strip.pth', map_location=torch.device('cpu'))) #Long Forecast full 200. 
 
 model.to(device)
 
@@ -768,7 +772,8 @@ idx = np.random.randint(0,ntest)
 # idx = 36
 # idx = 3
 # %%
-idx = 24
+idx = 5 
+# idx = 64 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 output_plot = []
@@ -847,7 +852,7 @@ for dim in range(num_vars):
 
 # %% 
 #Error Plots
-
+idx = 20
 output_plot = []
 for dim in range(num_vars):
     u_field = test_u[idx]
@@ -994,8 +999,8 @@ plt.grid()
 plt.xlabel('Time Steps')
 plt.ylabel('NMAE ')
 
-plt.savefig("multiblobs_error_growth_cum.pdf", bbox_inches='tight')
-plt.savefig("multiblobs_error_growth_cum.svg", bbox_inches='tight')
+# plt.savefig("multiblobs_error_growth_cum.pdf", bbox_inches='tight')
+# plt.savefig("multiblobs_error_growth_cum.svg", bbox_inches='tight')
 # %%
 # #Dropout Plots
 # #Cyan-Provolone
@@ -1420,7 +1425,7 @@ plt.savefig("multiblobs_error_growth_cum.svg", bbox_inches='tight')
 # fig.colorbar(pcm, cax = cax)
 
 # %%
-#Indiviudal Models
+#Individual Models
 
 configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
                  "Field": 'rho', #Variable we are modelling - Phi, rho, T
@@ -1980,7 +1985,6 @@ for field in dims:
     t2 = default_timer()
     print('preprocessing finished, time used:', t2-t1)
 
-
     ################################################################
     # training and evaluation
     ################################################################
@@ -1992,7 +1996,8 @@ for field in dims:
     if field == 'rho':
         model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_buoyant-trim.pth', map_location=torch.device('cpu')))
     if field == 'Phi':
-        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_direct-anchovy.pth', map_location=torch.device('cpu')))
+        # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_direct-anchovy.pth', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_straight-grass.pth', map_location=torch.device('cpu')))
     if field == 'T':
         model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_grave-sharp.pth', map_location=torch.device('cpu')))
     model.to(device)

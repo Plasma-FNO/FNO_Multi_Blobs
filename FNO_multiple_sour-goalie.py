@@ -25,7 +25,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'Yes',
                  "T_in": 10,    
-                 "T_out": 90,
+                 "T_out": 40,
                  "Step": 5,
                  "Modes": 16,
                  "Width_time":32, #FNO
@@ -597,7 +597,7 @@ num_vars = configuration['Variables']
 
 u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
 v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e5
 
 u_sol = np.nan_to_num(u_sol)
 v_sol = np.nan_to_num(v_sol)
