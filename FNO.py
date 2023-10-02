@@ -9,10 +9,10 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
                  "Field": 'T', #Variable we are modelling - Phi, rho, T
                  "Type": '2D Time', #FNO Architecture
-                 "Epochs": 500, 
-                 "Batch Size": 10,
+                 "Epochs": 50,
+                 "Batch Size": 4,
                  "Optimizer": 'Adam',
-                 "Learning Rate": 0.005,
+                 "Learning Rate": 0.001,
                  "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
@@ -22,7 +22,7 @@ configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
                  "Physics Normalisation": 'Yes', #Normalising the Variable 
                  "T_in": 10, #Input time steps
                  "T_out": 40, #Max simulation time
-                 "Step": 5, #Time steps output in each forward call
+                 "Step": 10, #Time steps output in each forward call
                  "Modes": 16, #Number of Fourier Modes
                  "Width": 32, #Features of the Convolutional Kernel
                  "Variables": 1, 
@@ -32,22 +32,22 @@ configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
 
 # %% 
 #Simvue Setup. If not using comment out this section and anything with run
-from simvue import Run
-run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'Individual'], metadata=configuration)
+# from simvue import Run
+# run = Run()
+# run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'Individual'], metadata=configuration)
 
 # %% 
 import os 
 CODE = ['FNO.py']
 
-# Save code files
-for code_file in CODE:
-    if os.path.isfile(code_file):
-        run.save(code_file, 'code')
-    elif os.path.isdir(code_file):
-        run.save_directory(code_file, 'code', 'text/plain', preserve_path=True)
-    else:
-        print('ERROR: code file %s does not exist' % code_file)
+# # Save code files
+# for code_file in CODE:
+#     if os.path.isfile(code_file):
+#         run.save(code_file, 'code')
+#     elif os.path.isdir(code_file):
+#         run.save_directory(code_file, 'code', 'text/plain', preserve_path=True)
+#     else:
+#         print('ERROR: code file %s does not exist' % code_file)
 
 # %%
 #Importing the necessary packages. 
@@ -471,7 +471,7 @@ class FNO(nn.Module):
 ################################################################
 
 # %%
-data = data_loc + '/Data/MHD_multi_blobs.npz'
+data = '/media/wumming/HHD/HHD_data/MHD_multi_blobs.npz'
 # data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
 
 # %%
@@ -495,7 +495,7 @@ y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
 ntrain = 240
-ntest = 38
+ntest = 36
 S = 106 #Grid Size 
 
 #Extracting hyperparameters from the config dict
@@ -568,7 +568,7 @@ model = FNO(modes, modes, width)
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
 
-run.update_metadata({'Number of Params': int(model.count_params())})
+# run.update_metadata({'Number of Params': int(model.count_params())})
 print("Number of model params : " + str(model.count_params()))
 
 #Setting up the optimisation schedule. 
@@ -643,15 +643,15 @@ for ep in tqdm(range(epochs)): #Training Loop - Epochwise
 
     print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_loss))
 
-    run.log_metrics({'Train Loss': train_loss, 
-                    'Test Loss': test_loss})
+    # run.log_metrics({'Train Loss': train_loss,
+    #                 'Test Loss': test_loss})
 
 
 train_time = time.time() - start_time
 # %%
 #Saving the Model
-model_loc = file_loc + '/Models/FNO_multi_blobs_' + run.name + '.pth'
-torch.save(model.state_dict(),  model_loc)
+# model_loc = file_loc + '/Models/FNO_multi_blobs_' + run.name + '.pth'
+# torch.save(model.state_dict(),  model_loc)
 
 # %%
 #Testing 
@@ -694,11 +694,11 @@ print('(MSE) Testing Error: %.3e' % (MSE_error))
 print('(MAE) Testing Error: %.3e' % (MAE_error))
 print('(LP) Testing Error: %.3e' % (LP_error))
 
-run.update_metadata({'Training Time': float(train_time),
-                     'MSE Test Error': float(MSE_error),
-                     'MAE Test Error': float(MAE_error),
-                     'LP Test Error': float(LP_error)
-                    })
+# run.update_metadata({'Training Time': float(train_time),
+#                      'MSE Test Error': float(MSE_error),
+#                      'MAE Test Error': float(MAE_error),
+#                      'LP Test Error': float(LP_error)
+#                     })
 
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 
@@ -773,32 +773,32 @@ fig.colorbar(pcm, pad=0.05)
 
 
 # %%
-output_plot = file_loc + '/Plots/MultiBlobs_' + configuration['Field'] + '_' + run.name + '.png'
-plt.savefig(output_plot)
+# output_plot = file_loc + '/Plots/MultiBlobs_' + configuration['Field'] + '_' + run.name + '.png'
+# plt.savefig(output_plot)
 
 # %%
 #Simvue Artifact storage
-INPUTS = []
-OUTPUTS = [model_loc, output_plot]
+# INPUTS = []
+# # OUTPUTS = [model_loc, output_plot]
+#
+#
+# # Save input files
+# for input_file in INPUTS:
+#     if os.path.isfile(input_file):
+#         run.save(input_file, 'input')
+#     elif os.path.isdir(input_file):
+#         run.save_directory(input_file, 'input', 'text/plain', preserve_path=True)
+#     else:
+#         print('ERROR: input file %s does not exist' % input_file)
+#
 
-
-# Save input files
-for input_file in INPUTS:
-    if os.path.isfile(input_file):
-        run.save(input_file, 'input')
-    elif os.path.isdir(input_file):
-        run.save_directory(input_file, 'input', 'text/plain', preserve_path=True)
-    else:
-        print('ERROR: input file %s does not exist' % input_file)
-
-
-# Save output files
-for output_file in OUTPUTS:
-    if os.path.isfile(output_file):
-        run.save(output_file, 'output')
-    elif os.path.isdir(output_file):
-        run.save_directory(output_file, 'output', 'text/plain', preserve_path=True)   
-    else:
-        print('ERROR: output file %s does not exist' % output_file)
-
-run.close()
+# # Save output files
+# for output_file in OUTPUTS:
+#     if os.path.isfile(output_file):
+#         run.save(output_file, 'output')
+#     elif os.path.isdir(output_file):
+#         run.save_directory(output_file, 'output', 'text/plain', preserve_path=True)
+#     else:
+#         print('ERROR: output file %s does not exist' % output_file)
+#
+# run.close()
