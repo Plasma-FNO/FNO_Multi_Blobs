@@ -584,8 +584,8 @@ class FNO_multi(nn.Module):
 ################################################################
 
 # %%
-# data = data_loc + '/Data/MHD_multi_blobs.npz'
-data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'# new dataset
+data = data_loc + '/Data/MHD_multi_blobs.npz'
+# data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'# new dataset
 
 # %%
 field = configuration['Field']
@@ -612,18 +612,18 @@ p = p.permute(0, 2, 3, 1)
 t_res = configuration['Temporal Resolution']
 x_res = configuration['Spatial Resolution']
 uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
-uvp = np.delete(uvp, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0) #Only for the new dataset 
+# uvp = np.delete(uvp, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0) #Only for the new dataset 
 
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
-# ntrain =240
-# ntest = 38
+ntrain =240
+ntest = 38
 
-ntrain = 1500 #new dataset
-ntest = 85 #new dataset
+# ntrain = 1500 #new dataset
+# ntest = 85 #new dataset
 
 
 S = 106 #Grid Size
@@ -680,9 +680,12 @@ print('preprocessing finished, time used:', t2-t1)
 
 model = FNO_multi(16, 16, width_vars, width_time)
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_sour-goalie.pth', map_location=torch.device('cpu'))) #250 benchmark 
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_reduced-fort.pth', map_location=torch.device('cpu'))) #1500 benchmark 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_reduced-fort.pth', map_location=torch.device('cpu'))) #1500 benchmark 
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_silver-tuba.pth', map_location=torch.device('cpu'))) #Min-Max different norms for each var
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cold-strip.pth', map_location=torch.device('cpu'))) #Long Forecast full 200. 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_distinct-result.pth', map_location=torch.device('cpu'))) #No skip benchmark 
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_nuclear-arena.pth', map_location=torch.device('cpu'))) #with skip connections 
+
 
 model.to(device)
 
@@ -772,9 +775,11 @@ idx = np.random.randint(0,ntest)
 # idx = 36
 # idx = 3
 # %%
-idx = 5 
-# idx = 64 
+# idx = 5  
+idx = 15
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib as mpl
+mpl.rcParams['font.size']=16
 
 output_plot = []
 for dim in range(num_vars):
@@ -789,12 +794,12 @@ for dim in range(num_vars):
     v_min_3 = torch.min(u_field[dim, :, :, -1])
     v_max_3 = torch.max(u_field[dim, :, :, -1])
 
-    fig = plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(10, 7))
     ax = fig.add_subplot(2,3,1)
     pcm =ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
     # ax.title.set_text('Initial')
     ax.title.set_text('t='+ str(T_in))
-    ax.set_ylabel('Solution')
+    ax.set_ylabel('Solution', weight='bold')
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.1)
     cbar = fig.colorbar(pcm, cax=cax)
@@ -826,7 +831,7 @@ for dim in range(num_vars):
 
     ax = fig.add_subplot(2,3,4)
     pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-    ax.set_ylabel('FNO')
+    ax.set_ylabel('FNO', weight='bold')
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.1)
     cbar = fig.colorbar(pcm, cax=cax)
@@ -852,7 +857,7 @@ for dim in range(num_vars):
 
 # %% 
 #Error Plots
-idx = 20
+idx = 8
 output_plot = []
 for dim in range(num_vars):
     u_field = test_u[idx]
@@ -871,7 +876,7 @@ for dim in range(num_vars):
     pcm =ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
     # ax.title.set_text('Initial')
     ax.title.set_text('t='+ str(T_in))
-    ax.set_ylabel('Solution')
+    ax.set_ylabel('Solution', weight='bold')
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.1)
     cbar = fig.colorbar(pcm, cax=cax)
@@ -903,7 +908,7 @@ for dim in range(num_vars):
 
     ax = fig.add_subplot(3,3,4)
     pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-    ax.set_ylabel('FNO')
+    ax.set_ylabel('FNO', weight='bold')
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.1)
     cbar = fig.colorbar(pcm, cax=cax)
@@ -931,7 +936,7 @@ for dim in range(num_vars):
 
     ax = fig.add_subplot(3,3,7)
     pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5])
-    ax.set_ylabel('Abs Error')
+    ax.set_ylabel('Abs Error', weight='bold')
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.1)
     cbar = fig.colorbar(pcm, cax=cax)
@@ -955,15 +960,17 @@ for dim in range(num_vars):
     cbar = fig.colorbar(pcm, cax=cax)
     cbar.formatter.set_powerlimits((0, 0))
 
+    # plt.savefig("multiblobs_" + dims[dim] + "_" + str(idx) + "_reduced-fort.pdf", format="pdf", bbox_inches='tight', transparent='True')
+
 # %%
 #Plotting the error growth across time.
 err_rho = [] 
 err_phi = []
 err_T = []
 for ii in range(T):
-    err_rho.append(torch.abs(pred_set_encoded[:,0,:,:,ii] - test_u_encoded[:,0,:,:,ii]).mean())
-    err_phi.append(torch.abs(pred_set_encoded[:,1,:,:,ii] - test_u_encoded[:,1,:,:,ii]).mean())
-    err_T.append(torch.abs(pred_set_encoded[:,2,:,:,ii] - test_u_encoded[:,2,:,:,ii]).mean())
+    err_rho.append(torch.abs(pred_set[:,0,:,:,ii] - test_u[:,0,:,:,ii]).mean())
+    err_phi.append(torch.abs(pred_set[:,1,:,:,ii] - test_u[:,1,:,:,ii]).mean())
+    err_T.append(torch.abs(pred_set[:,2,:,:,ii] - test_u[:,2,:,:,ii]).mean())
 
 err_rho = np.asarray(err_rho)
 err_phi = np.asarray(err_phi)
@@ -990,14 +997,15 @@ plt.rcParams['xtick.minor.width'] =5
 plt.rcParams['ytick.minor.width'] =5
 mpl.rcParams['axes.titlepad'] = 20
 
-plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'navy', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'darkgreen', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'maroon', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'black', ls='--', linewidth=5)
+# %%
+# plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'navy', linewidth=5)
+# plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'darkgreen', linewidth=5)
+# plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'maroon', linewidth=5)
+# plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'black', ls='--', linewidth=5)
 plt.legend()
 plt.grid()
 plt.xlabel('Time Steps')
-plt.ylabel('NMAE ')
+plt.ylabel('MAE ')
 
 # plt.savefig("multiblobs_error_growth_cum.pdf", bbox_inches='tight')
 # plt.savefig("multiblobs_error_growth_cum.svg", bbox_inches='tight')
@@ -2083,6 +2091,7 @@ for field in dims:
     idx = np.random.randint(0,ntest) 
     idx = 5
     idx = 3
+    # idx = 15
 
     if configuration['Log Normalisation'] == 'Yes':
         test_u = torch.exp(test_u)

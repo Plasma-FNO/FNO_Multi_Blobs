@@ -25,8 +25,8 @@ configuration = {"Case": 'Multi-Blobs',
                  "Log Normalisation":  'No',
                  "Physics Normalisation": 'Yes',
                  "T_in": 10,    
-                 "T_out": 180,
-                 "Step": 10,
+                 "T_out": 40,
+                 "Step": 5,
                  "Modes": 16,
                  "Width_time":32, #FNO
                  "Width_vars": 0, #U-Net
@@ -44,7 +44,7 @@ configuration = {"Case": 'Multi-Blobs',
 #Simvue Setup. If not using comment out this section and anything with run
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Data Size", "SecondGen_Data"], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "No Skip", "Data Size", "SecondGen_Data"], metadata=configuration)
 
 # %% 
 import os 
@@ -489,13 +489,13 @@ class FNO_multi(nn.Module):
 
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
-        x0 = self.f0(x)
+        x = self.f0(x)
         x = self.f1(x)
-        x = self.f2(x) + x0 
+        x = self.f2(x)# + x0 
         # x = self.dropout(x)
-        x1 = self.f3(x)
+        x = self.f3(x)
         x = self.f4(x)
-        x = self.f5(x) + x1 
+        x = self.f5(x)# + x1 
 
         # x = self.dropout(x)
 

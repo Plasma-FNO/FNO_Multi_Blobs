@@ -38,11 +38,10 @@ configuration = {"Case": 'Multi-Blobs',
                 #  "UQ": 'Dropout',
                 #  "Dropout Rate": 0.9
                  }
-
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect", "Long Forecasting", "grad-clip"], metadata=configuration)
+run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'MultiVariable', "Skip_Connect"], metadata=configuration)
 
 # %% 
 import os 
@@ -597,7 +596,7 @@ num_vars = configuration['Variables']
 
 u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
 v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e5
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
 
 u_sol = np.nan_to_num(u_sol)
 v_sol = np.nan_to_num(v_sol)
@@ -676,6 +675,7 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 model = FNO_multi(modes, modes, width_vars, width_time)
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_distinct-result.pth', map_location=torch.device('cpu'))) #No skip benchmark 
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
@@ -725,7 +725,7 @@ for ep in tqdm(range(epochs)):
         train_l2_full += l2_full.item()
 
         loss.backward()
-        torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=1.0) #, norm_type=2.0)
+        # torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=1.0) #, norm_type=2.0)
         # l2_full.backward()
         optimizer.step()
 

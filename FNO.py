@@ -3,41 +3,49 @@
 """
 Created on 6 Jan 2023
 @author: vgopakum
-FNO modelled over the MHD data built using JOREK for multi-blob diffusion. 
+FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
+
+Multivariable FNO
 """
 # %%
-configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
-                 "Field": 'T', #Variable we are modelling - Phi, rho, T
-                 "Type": '2D Time', #FNO Architecture
-                 "Epochs": 500, 
-                 "Batch Size": 10,
+configuration = {"Case": 'Multi-Blobs',
+                 "Field": 'Phi',
+                 "Field_Mixing": 'Channel',
+                 "Type": '2D Time',
+                 "Epochs": 500,
+                 "Batch Size": 4,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.005,
                  "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
-                 "Instance Norm": 'No', #Layerwise Normalisation
-                 "Log Normalisation":  'No',
-                 "Physics Normalisation": 'Yes', #Normalising the Variable 
-                 "T_in": 10, #Input time steps
-                 "T_out": 40, #Max simulation time
-                 "Step": 5, #Time steps output in each forward call
-                 "Modes": 16, #Number of Fourier Modes
-                 "Width": 32, #Features of the Convolutional Kernel
-                 "Variables": 1, 
-                 "Noise": 0.0, 
-                 "Loss Function": 'LP Loss' #Choice of Loss Function
+                 "Instance Norm": 'No',
+                 "Log Normalisation": 'No',
+                 "Physics Normalisation": 'Yes',
+                 "T_in": 10,
+                 "T_out": 40,
+                 "Step": 5,
+                 "Modes": 16,
+                 "Width_time": 32,  # FNO
+                 "Width_vars": 0,  # U-Net
+                 "Variables": 1,
+                 "Noise": 0.0,
+                 "Loss Function": 'LP Loss',
+                 "Spatial Resolution": 1,
+                 "Temporal Resolution": 1,
+                 "Gradient Clipping Norm": None,
+                 #  "UQ": 'Dropout',
+                 #  "Dropout Rate": 0.9
                  }
 
-# %% 
-#Simvue Setup. If not using comment out this section and anything with run
+# %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD", tags=['FNO', 'MHD', 'JOREK', 'Multi-Blobs', 'Individual'], metadata=configuration)
+run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Skip_Connect", "final-mod"], metadata=configuration)
 
-# %% 
-import os 
+# # %%
+import os
 CODE = ['FNO.py']
 
 # Save code files
@@ -48,6 +56,7 @@ for code_file in CODE:
         run.save_directory(code_file, 'code', 'text/plain', preserve_path=True)
     else:
         print('ERROR: code file %s does not exist' % code_file)
+
 
 # %%
 #Importing the necessary packages. 
@@ -274,7 +283,6 @@ class LpLoss(object):
     def __call__(self, x, y):
         return self.rel(x, y)
 
-# %%
 
 # #Adding Gaussian Noise to the training dataset
 # class AddGaussianNoise(object):
@@ -296,6 +304,31 @@ class LpLoss(object):
 # # additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
 # additive_noise.cuda()
 # %%
+# Extracting the configuration settings
+
+modes = configuration['Modes']
+width_time = configuration['Width_time']
+width_vars = configuration['Width_vars']
+output_size = configuration['Step']
+
+batch_size = configuration['Batch Size']
+
+batch_size2 = batch_size
+
+t1 = default_timer()
+
+T_in = configuration['T_in']
+T = configuration['T_out']
+step = configuration['Step']
+num_vars = configuration['Variables']
+
+# %%
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+
+
+# %%
 ################################################################
 # fourier layer
 ################################################################
@@ -314,13 +347,13 @@ class SpectralConv2d(nn.Module):
         self.modes2 = modes2
 
         self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels,num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels,num_vars, self.modes1, self.modes2, dtype=torch.cfloat))
 
     # Complex multiplication
     def compl_mul2d(self, input, weights):
         # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
-        return torch.einsum("bixy,ioxy->boxy", input, weights)
+        return torch.einsum("bivxy,iovxy->bovxy", input, weights)
 
 
     def forward(self, x):
@@ -329,11 +362,12 @@ class SpectralConv2d(nn.Module):
         x_ft = torch.fft.rfft2(x)
 
         # Multiply relevant Fourier modes
-        out_ft = torch.zeros(batchsize, self.out_channels,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
-        out_ft[:, :, :self.modes1, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
-        out_ft[:, :, -self.modes1:, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
+        out_ft = torch.zeros(batchsize, self.out_channels, num_vars, x.size(-2), x.size(-1) // 2 + 1,
+                             dtype=torch.cfloat, device=x.device)
+        out_ft[:, :, :, :self.modes1, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, :, :self.modes1, :self.modes2], self.weights1)
+        out_ft[:, :, :, -self.modes1:, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, :, -self.modes1:, :self.modes2], self.weights2)
 
         #Return to physical space
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
@@ -349,7 +383,7 @@ class Fourier_Layer(nn.Module):
         self.width = width
 
         self.conv = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
-        self.w = nn.Conv2d(self.width, self.width, 1)
+        self.w = nn.Conv3d(self.width, self.width, 1)
     
     
     def forward(self, x):
@@ -364,7 +398,7 @@ class Fourier_Layer(nn.Module):
 # %%
 
 class FNO(nn.Module):
-    def __init__(self, modes1, modes2, width):
+    def __init__(self, modes1, modes2, width_vars, width_time):
         super(FNO, self).__init__()
 
         """
@@ -382,18 +416,19 @@ class FNO(nn.Module):
 
         self.modes1 = modes1
         self.modes2 = modes2
-        self.width= width
+        self.width_vars = width_vars
+        self.width_time = width_time
 
-        self.fc0 = nn.Linear(T_in+2, self.width)
+        self.fc0_time = nn.Linear(T_in + 2, self.width_time)
 
         # self.padding = 8 # pad the domain if input is non-periodic
 
-        self.f0 = Fourier_Layer(self.modes1, self.modes2, self.width)
-        self.f1 = Fourier_Layer(self.modes1, self.modes2, self.width)
-        self.f2 = Fourier_Layer(self.modes1, self.modes2, self.width)
-        self.f3 = Fourier_Layer(self.modes1, self.modes2, self.width)
-        self.f4 = Fourier_Layer(self.modes1, self.modes2, self.width)
-        self.f5 = Fourier_Layer(self.modes1, self.modes2, self.width)
+        self.f0 = Fourier_Layer(self.modes1, self.modes2, self.width_time)
+        self.f1 = Fourier_Layer(self.modes1, self.modes2, self.width_time)
+        self.f2 = Fourier_Layer(self.modes1, self.modes2, self.width_time)
+        self.f3 = Fourier_Layer(self.modes1, self.modes2, self.width_time)
+        self.f4 = Fourier_Layer(self.modes1, self.modes2, self.width_time)
+        self.f5 = Fourier_Layer(self.modes1, self.modes2, self.width_time)
 
         # self.dropout = nn.Dropout(p=0.1)
 
@@ -401,49 +436,50 @@ class FNO(nn.Module):
         self.norm = nn.Identity()
 
 
-        self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, step)
+        self.fc1_time = nn.Linear(self.width_time, 128)
+        self.fc2_time = nn.Linear(128, step)
 
 
     def forward(self, x):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
 
-        x = self.fc0(x)
-        x = x.permute(0, 3, 1, 2)
+        x = self.fc0_time(x)
+        x = x.permute(0, 4, 1, 2, 3)
+        grid = grid.permute(0, 4, 1, 2, 3)
+        
         # x = self.dropout(x)
-
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
-        x0 = self.f0(x)
+        x = self.f0(x)
         x = self.f1(x)
-        x = self.f2(x) + x0 
+        x = self.f2(x) #+ x0 
         # x = self.dropout(x)
-        x1 = self.f3(x)
+        x = self.f3(x)
         x = self.f4(x)
-        x = self.f5(x) + x1 
+        x = self.f5(x) # + x1 
 
         # x = self.dropout(x)
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
 
-        x = x.permute(0, 2, 3, 1)
+        x = x.permute(0, 2, 3, 4, 1)
         x = x 
 
-        x = self.fc1(x)
+        x = self.fc1_time(x)
         x = F.gelu(x)
         # x = self.dropout(x)
-        x = self.fc2(x)
+        x = self.fc2_time(x)
         
         return x
 
 #Using x and y values from the simulation discretisation 
     def get_grid(self, shape, device):
-        batchsize, size_x, size_y = shape[0], shape[1], shape[2]
-        gridx = gridx = torch.tensor(x_grid, dtype=torch.float)
-        gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
+        batchsize, num_vars, size_x, size_y = shape[0], shape[1], shape[2], shape[3]
+        gridx = torch.tensor(x_grid, dtype=torch.float)
+        gridx = gridx.reshape(1, 1, size_x, 1, 1).repeat([batchsize, num_vars, 1, size_y, 1])
         gridy = torch.tensor(y_grid, dtype=torch.float)
-        gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
+        gridy = gridy.reshape(1, 1, 1, size_y, 1).repeat([batchsize, num_vars, size_x, 1, 1])
         return torch.cat((gridx, gridy), dim=-1).to(device)
 
 ## Arbitrary grid discretisation 
@@ -495,12 +531,13 @@ y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
 ntrain = 240
-ntest = 38
+ntest = 36
 S = 106 #Grid Size 
 
 #Extracting hyperparameters from the config dict
 modes = configuration['Modes']
-width = configuration['Width']
+width_time = configuration['Width_time']
+width_vars = configuration['Width_vars']
 output_size = configuration['Step']
 batch_size = configuration['Batch Size']
 T_in = configuration['T_in']
@@ -549,9 +586,9 @@ train_u = y_normalizer.encode(train_u)
 test_u_encoded = y_normalizer.encode(test_u)
 
 # %%
-#Setting up the dataloaders for the test and train datasets. 
-train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
+#Setting up the dataloaders for the test and train datasets.
+train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a.unsqueeze(1), train_u.unsqueeze(1)), batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a.unsqueeze(1), test_u_encoded.unsqueeze(1)), batch_size=batch_size, shuffle=False)
 
 t2 = default_timer()
 print('preprocessing finished, time used:', t2-t1)
@@ -561,11 +598,7 @@ print('preprocessing finished, time used:', t2-t1)
 ################################################################
 # training and evaluation
 ################################################################
-
-#Instantiating the Model. 
-model = FNO(modes, modes, width)
-# model = model.double()
-# model = nn.DataParallel(model, device_ids = [0,1])
+model = FNO(modes, modes, width_vars, width_time)
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
@@ -656,7 +689,9 @@ torch.save(model.state_dict(),  model_loc)
 # %%
 #Testing 
 batch_size = 1
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1, shuffle=False)
+# test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1, shuffle=False)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a.unsqueeze(1), test_u_encoded.unsqueeze(1)), batch_size=1, shuffle=False)
+
 pred_set = torch.zeros(test_u.shape)
 index = 0
 with torch.no_grad():
@@ -706,7 +741,7 @@ pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 #Plotting the comparison plots
 
 idx = np.random.randint(0,ntest) 
-idx = 5
+idx = 3
 
 if configuration['Log Normalisation'] == 'Yes':
     test_u = torch.exp(test_u)

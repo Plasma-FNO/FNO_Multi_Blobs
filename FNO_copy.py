@@ -7,10 +7,10 @@ FNO modelled over the MHD data built using JOREK for multi-blob diffusion.
 """
 # %%
 configuration = {"Case": 'Multi-Blobs', #Specifying the Simulation Scenario
-                 "Field": 'T', #Variable we are modelling - Phi, rho, T
+                 "Field": 'Phi', #Variable we are modelling - Phi, rho, T
                  "Type": '2D Time', #FNO Architecture
                  "Epochs": 500, 
-                 "Batch Size": 10,
+                 "Batch Size": 4,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.005,
                  "Scheduler Step": 100,
@@ -467,8 +467,8 @@ class FNO(nn.Module):
 ################################################################
 
 # %%
-# data = data_loc + '/Data/MHD_multi_blobs.npz'
-data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
+data = data_loc + '/Data/MHD_multi_blobs.npz'
+# data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'
 
 # %%
 field = configuration['Field']
@@ -483,14 +483,15 @@ if configuration['Log Normalisation'] == 'Yes':
     u_sol = np.log(u_sol)
 
 u_sol = np.nan_to_num(u_sol)
-u_sol = np.delete(u_sol, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0)
+u_sol= np.delete(u_sol, (153, 229), axis=0) #Outlier T values - old dataset
+# u_sol = np.delete(u_sol, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0) #new dataset
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
 ntrain = 240
-ntest = 38
+ntest = 36
 S = 106 #Grid Size 
 
 #Extracting hyperparameters from the config dict
@@ -702,7 +703,7 @@ pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 #Plotting the comparison plots
 
 idx = np.random.randint(0,ntest) 
-idx = 5
+idx = 3
 
 if configuration['Log Normalisation'] == 'Yes':
     test_u = torch.exp(test_u)
