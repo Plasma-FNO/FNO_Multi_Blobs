@@ -720,19 +720,22 @@ with torch.no_grad():
         print(t2-t1)
 
 # %%
-#Logging Metrics 
+print(pred_set.shape, test_u.shape)
+# Logging Metrics
 MSE_error = (pred_set - test_u_encoded).pow(2).mean()
 MAE_error = torch.abs(pred_set - test_u_encoded).mean()
-LP_error = loss / (ntest*T/step)
+LP_error = loss / (ntest * T / step)
+rel_error = torch.abs((pred_set - test_u_encoded)/test_u_encoded).mean()
 
 print('(MSE) Testing Error: %.3e' % (MSE_error))
 print('(MAE) Testing Error: %.3e' % (MAE_error))
 print('(LP) Testing Error: %.3e' % (LP_error))
-
+print('MAPE Testing Error %.3e' % (rel_error))
 run.update_metadata({'Training Time': float(train_time),
                      'MSE Test Error': float(MSE_error),
                      'MAE Test Error': float(MAE_error),
-                     'LP Test Error': float(LP_error)
+                     'LP Test Error': float(LP_error),
+                     'MAPE': float(rel_error)
                     })
 
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
