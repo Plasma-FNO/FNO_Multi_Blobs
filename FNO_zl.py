@@ -9,7 +9,7 @@ Multivariable FNO
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
-                 "Field": 'T',
+                 "Field": 'Phi',
                  "Field_Mixing": 'Channel',
                  "Type": '2D Time',
                  "Epochs": 500,
@@ -19,7 +19,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
-                 "Normalisation Strategy": 'Min-Max. Different',
+                 "Normalisation Strategy": 'Min-Max',
                  "Instance Norm": 'No',
                  "Log Normalisation": 'No',
                  "Physics Normalisation": 'Yes',
@@ -42,7 +42,7 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Diff", "Recon", "Skip-connect", "Final"], metadata=configuration)
+run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Diff", "Recon", "Skip-connect", "Finals"], metadata=configuration)
 
 # # %%
 import os
@@ -204,8 +204,7 @@ class MinMax_Normalizer(object):
         mymin = torch.min(x)
         mymax = torch.max(x)
         # mymin = torch.tensor(0.0)
-        # mymax = torch.tensor(0.3)
-
+        # mymax = torch.tensor(2.0)
 
         self.a = (high - low)/(mymax - mymin)
         self.b = -self.a*mymax + high
@@ -512,7 +511,7 @@ class FNO_multi(nn.Module):
         x = self.f1(x0, grid)
         x = self.f2(x, grid) + x0
         x1 = self.f3(x, grid)
-        x = self.f4(x, grid)
+        x = self.f4(x1, grid)
         x = self.f5(x, grid) + x1
 
         # x = self.dropout(x)
@@ -600,7 +599,7 @@ step = configuration['Step']
 
 t1 = default_timer()
 
-np.random.shuffle(u_sol)
+# np.random.shuffle(u_sol)
 u = torch.from_numpy(u_sol)
 u = u.permute(0, 2, 3, 1)
 
@@ -644,7 +643,7 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 model = FNO_multi(modes, modes, width_vars, width_time)
-# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_strong-bayes.pth', map_location=torch.device('cpu'))) 
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_afraid-energy.pth', map_location=torch.device('cpu')))
 model.to(device)
 
 run.update_metadata({'Number of Params': int(model.count_params())})
@@ -787,8 +786,8 @@ nrmse = torch.sqrt((pred_set - test_u_encoded).pow(2).mean()) / torch.std(test_u
 
 print('(MSE) Testing Error: %.3e' % (MSE_error))
 print('(MAE) Testing Error: %.3e' % (MAE_error))
-print('(LP) Testing Error: %.3e' % (LP_error))
-print('(MAPE) Testing Error %.3e' % (rel_error))
+# print('(LP) Testing Error: %.3e' % (LP_error))
+# print('(MAPE) Testing Error %.3e' % (rel_error))
 print('(NMSE) Testing Error %.3e' % (nmse))
 print('(NRMSE) Testing Error %.3e' % (nrmse))
 
@@ -796,10 +795,10 @@ print('(NRMSE) Testing Error %.3e' % (nrmse))
 run.update_metadata({'Training Time': float(train_time),
                      'MSE': float(MSE_error),
                      'MAE': float(MAE_error),
-                     'LP Error': float(LP_error),
-                     'MAPE': float(rel_error),
+                    #  'LP Error': float(LP_error),
+                    #  'MAPE': float(rel_error),
                      'NMSE': float(nmse),
-                     'MAPE': float(nrmse)
+                     'NRMSE': float(nrmse)
                     })
 
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()

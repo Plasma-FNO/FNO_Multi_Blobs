@@ -12,14 +12,14 @@ configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
                  "Field_Mixing": 'Channel',
                  "Type": '2D Time',
-                 "Epochs": 500,
+                 "Epochs": 1000,
                  "Batch Size": 4,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
-                 "Scheduler Step": 100,
+                 "Scheduler Step": 200,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
-                 "Normalisation Strategy": 'Min-Max. Different',
+                 "Normalisation Strategy": 'Min-Max',
                  "Instance Norm": 'No',
                  "Log Normalisation": 'No',
                  "Physics Normalisation": 'Yes',
@@ -42,7 +42,7 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Skip-connect", "Diff", "Recon", "Final"], metadata=configuration)
+run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Skip-connect", "Diff", "Recon", "Finals"], metadata=configuration)
 
 # # %%
 import os
@@ -348,6 +348,38 @@ class LogNormalizer(object):
         self.b_p = self.b_p.cpu()
 
 
+# #normalization, rangewise but across the full domain 
+# class MinMax_Normalizer(object):
+#     def __init__(self, x, low=-1.0, high=1.0):
+#         super(MinMax_Normalizer, self).__init__()
+#         mymin = torch.min(x)
+#         mymax = torch.max(x)
+
+#         self.a = (high - low)/(mymax - mymin)
+#         self.b = -self.a*mymax + high
+
+#     def encode(self, x):
+#         s = x.size()
+#         x = x.reshape(s[0], -1)
+#         x = self.a*x + self.b
+#         x = x.view(s)
+#         return x
+
+#     def decode(self, x):
+#         s = x.size()
+#         x = x.reshape(s[0], -1)
+#         x = (x - self.b)/self.a
+#         x = x.view(s)
+#         return x
+
+#     def cuda(self):
+#         self.a = self.a.cuda()
+#         self.b = self.b.cuda()
+
+#     def cpu(self):
+#         self.a = self.a.cpu()
+#         self.b = self.b.cpu()
+
 # %%
 ##################################
 # Loss Functions
@@ -629,9 +661,8 @@ class FNO_multi(nn.Module):
         x = self.f1(x0, grid)
         x = self.f2(x, grid) + x0
         x1 = self.f3(x, grid)
-        x = self.f4(x, grid)
+        x = self.f4(x1, grid)
         x = self.f5(x, grid) + x1
-
         # x = self.dropout(x)
 
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
@@ -926,7 +957,7 @@ run.update_metadata({'Training Time': float(train_time),
                      'LP Error': float(LP_error),
                      'MAPE': float(rel_error),
                      'NMSE': float(nmse),
-                     'MAPE': float(nrmse)
+                     'NRMSE': float(nrmse)
                     })
 
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
