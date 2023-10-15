@@ -751,18 +751,56 @@ nrmse = torch.sqrt((pred_set - test_u_encoded).pow(2).mean()) / torch.std(test_u
 
 print('(MSE) Testing Error: %.3e' % (MSE_error))
 print('(MAE) Testing Error: %.3e' % (MAE_error))
-print('(LP) Testing Error: %.3e' % (LP_error))
-print('(MAPE) Testing Error %.3e' % (rel_error))
-print('(NMSE) Testing Error %.3e' % (nmse))
-print('(NRMSE) Testing Error %.3e' % (nrmse))
+# print('(LP) Testing Error: %.3e' % (LP_error))
+# print('(MAPE) Testing Error %.3e' % (rel_error))
+# print('(NMSE) Testing Error %.3e' % (nmse))
+# print('(NRMSE) Testing Error %.3e' % (nrmse))
 
-run.update_metadata({'MSE Test Error': float(MSE_error),
-                     'MAE Test Error': float(MAE_error),
-                     'LP Test Error': float(LP_error)
-                    })
+# run.update_metadata({'MSE Test Error': float(MSE_error),
+#                      'MAE Test Error': float(MAE_error),
+#                      'LP Test Error': float(LP_error)
+#                     })
+
 
 pred_set_encoded = pred_set
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
+
+nmse= 0 
+for ii in range(num_vars):
+    nmse += (pred_set[:,ii] - test_u[:,ii]).pow(2).mean() / test_u[:,ii].pow(2).mean()
+    print(test_u[:,ii].pow(2).mean())
+nmse = nmse/num_vars
+print('(NMSE) Testing Error %.3e' % (nmse))
+
+pred_set_scaled = pred_set
+test_u_scaled = test_u
+
+# %%
+err_rho = [] 
+err_phi = []
+err_T = []
+
+for ii in range(T):
+    err_rho.append((pred_set_scaled[:,0,:,:,ii] - test_u_scaled[:,0,:,:,ii]).pow(2).mean() / test_u_scaled[:,0].pow(2).mean())
+    err_phi.append((pred_set_scaled[:,1,:,:,ii] - test_u_scaled[:,1,:,:,ii]).pow(2).mean() / test_u_scaled[:,1].pow(2).mean())
+    err_T.append((pred_set_scaled[:,2,:,:,ii] - test_u_scaled[:,2,:,:,ii]).pow(2).mean() / test_u_scaled[:,2].pow(2).mean())
+
+err_rho = np.asarray(err_rho)
+err_phi = np.asarray(err_phi)
+err_T = np.asarray(err_T)
+
+
+# %% 
+if configuration["Physics Normalisation"] == 'Yes':
+    pred_set[:,0:1,...] = pred_set[:,0:1,...] * 1e20
+    pred_set[:,1:2,...] = pred_set[:,1:2,...] * 1e5
+    pred_set[:,2:3,...] = pred_set[:,2:3,...] * 1e6
+
+
+    test_u[:,0:1,...] = test_u[:,0:1,...] * 1e20
+    test_u[:,1:2,...] = test_u[:,1:2,...] * 1e5
+    test_u[:,2:3,...] = test_u[:,2:3,...] * 1e6
+
 # %% 
 if configuration["Physics Normalisation"] == 'Yes':
     pred_set[:,0:1,...] = pred_set[:,0:1,...] * 1e20
@@ -969,19 +1007,6 @@ for dim in range(num_vars):
 
     # plt.savefig("multiblobs_" + dims[dim] + "_" + str(idx) + "_reduced-fort.pdf", format="pdf", bbox_inches='tight', transparent='True')
 
-# %%
-#Plotting the error growth across time.
-err_rho = [] 
-err_phi = []
-err_T = []
-for ii in range(T):
-    err_rho.append(torch.abs(pred_set[:,0,:,:,ii] - test_u[:,0,:,:,ii]).mean())
-    err_phi.append(torch.abs(pred_set[:,1,:,:,ii] - test_u[:,1,:,:,ii]).mean())
-    err_T.append(torch.abs(pred_set[:,2,:,:,ii] - test_u[:,2,:,:,ii]).mean())
-
-err_rho = np.asarray(err_rho)
-err_phi = np.asarray(err_phi)
-err_T = np.asarray(err_T)
 
 # %%
 import matplotlib as mpl

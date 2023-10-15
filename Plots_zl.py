@@ -214,6 +214,8 @@ class MinMax_Normalizer(object):
         self.a_p = (high - low) / (max_p - min_p)
         self.b_p = -self.a_p * max_p + high
 
+        print(min_u, max_u, min_v, max_v, min_p, max_p)
+
     def encode(self, x):
         s = x.size()
 
@@ -581,9 +583,9 @@ field = configuration['Field']
 dims = ['rho', 'Phi', 'T']
 num_vars = configuration['Variables']
 
-u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
-v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
+u_sol = np.load(data)['rho'].astype(np.float32)  / 1e19
+v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e3
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e4
 
 u_sol = np.nan_to_num(u_sol)
 v_sol = np.nan_to_num(v_sol)
@@ -604,7 +606,7 @@ uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
 uvp = np.delete(uvp, (153, 229), axis=0)  # Outlier T values
 # uvp = np.delete(uvp, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0) #Only for the new dataset 
     
-np.random.shuffle(uvp)
+# np.random.shuffle(uvp)
 
 x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
@@ -627,7 +629,6 @@ batch_size2 = batch_size
 t1 = default_timer()
 
 
-
 train_a = uvp[:ntrain,:,:,:,:T_in]
 train_u = uvp[:ntrain,:,:,:,T_in:T+T_in]
 
@@ -639,20 +640,16 @@ print(test_u.shape)
 
 
 # %%
-# a_normalizer = RangeNormalizer(train_a)
-a_normalizer = MinMax_Normalizer(train_a)
-# a_normalizer = GaussianNormalizer(train_a)
+
+a_normalizer = MinMax_Normalizer(uvp[...,:T_in])
 
 train_a = a_normalizer.encode(train_a)
 test_a = a_normalizer.encode(test_a)
 
-# y_normalizer = RangeNormalizer(train_u)
-y_normalizer = MinMax_Normalizer(train_u)
-# y_normalizer = GaussianNormalizer(train_u)
+y_normalizer = MinMax_Normalizer(uvp[...,T_in:T+T_in])
 
 train_u = y_normalizer.encode(train_u)
 test_u_encoded = y_normalizer.encode(test_u)
-
 
 # %%
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
@@ -660,7 +657,6 @@ test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a,
 
 t2 = default_timer()
 print('preprocessing finished, time used:', t2-t1)
-
 
 # %% 
 
@@ -670,10 +666,13 @@ print('preprocessing finished, time used:', t2-t1)
 
 # model = FNO_multi(16, 16, width_vars, width_time)
 model = FNO_multi(T_in, step, num_vars, modes, modes, width_vars, width_time)
-
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_weary-tactics.pth', map_location=torch.device('cpu'))) #Min-Max Diff
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_polite-comment.pth', map_location=torch.device('cpu'))) #Min-Max Same 
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_dynamic-duck.pth', map_location=torch.device('cpu'))) #Min-Max Diff
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_dynamic-duck.pth', map_location=torch.device('cpu'))) #Proper Skip - Finals 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_violent-spot.pth', map_location=torch.device('cpu'))) #Normalisation test train 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_equidistant-pint.pth', map_location=torch.device('cpu'))) #250 Epochs 
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_wary-deck.pth', map_location=torch.device('cpu'))) #250 Epochs 
+
 
 model.to(device)
 
@@ -690,11 +689,6 @@ optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
 myloss = LpLoss(size_average=False)
-
-# %%
-epochs = configuration['Epochs']
-if torch.cuda.is_available():
-    y_normalizer.cuda()
 
 # %%
 #Testing 
@@ -724,7 +718,7 @@ with torch.no_grad():
         # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
         index += 1
-        print(t2-t1)
+        # print(t2-t1)
 
 # %% 
 print(pred_set.shape, test_u.shape)
@@ -762,7 +756,6 @@ print('(NMSE) Testing Error %.3e' % (nmse))
 pred_set_scaled = pred_set
 test_u_scaled = test_u
 
-# %%%
 # %%
 #Plotting the error growth across time.
 err_rho = [] 
@@ -770,9 +763,13 @@ err_phi = []
 err_T = []
 
 for ii in range(T):
-    err_rho.append((pred_set_scaled[:,0,:,:,ii] - test_u_scaled[:,0,:,:,ii]).pow(2).mean() / test_u_scaled[:,0].pow(2).mean())
-    err_phi.append((pred_set_scaled[:,1,:,:,ii] - test_u_scaled[:,1,:,:,ii]).pow(2).mean() / test_u_scaled[:,1].pow(2).mean())
-    err_T.append((pred_set_scaled[:,2,:,:,ii] - test_u_scaled[:,2,:,:,ii]).pow(2).mean() / test_u_scaled[:,2].pow(2).mean())
+    # err_rho.append((pred_set_scaled[:,0,:,:,ii] - test_u_scaled[:,0,:,:,ii]).pow(2).mean() / torch.std(test_u_scaled[:,0].pow(2).mean()))
+    # err_phi.append((pred_set_scaled[:,1,:,:,ii] - test_u_scaled[:,1,:,:,ii]).pow(2).mean() / torch.std(test_u_scaled[:,1].pow(2).mean()))
+    # err_T.append((pred_set_scaled[:,2,:,:,ii] - test_u_scaled[:,2,:,:,ii]).pow(2).mean() / torch.std(test_u_scaled[:,2].pow(2).mean()))
+    
+    err_rho.append(torch.abs(pred_set_encoded[:,0,:,:,ii] - test_u_encoded[:,0,:,:,ii]).mean())
+    err_phi.append(torch.abs(pred_set_encoded[:,1,:,:,ii] - test_u_encoded[:,1,:,:,ii]).mean())
+    err_T.append(torch.abs(pred_set_encoded[:,2,:,:,ii] - test_u_encoded[:,2,:,:,ii]).mean())
 
 err_rho = np.asarray(err_rho)
 err_phi = np.asarray(err_phi)
@@ -1014,7 +1011,7 @@ plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative',
 plt.legend()
 plt.grid()
 plt.xlabel('Time Steps')
-plt.ylabel('NMSE ')
+plt.ylabel('MAE ')
 
 # plt.savefig("multiblobs_error_growth_cum.pdf", bbox_inches='tight')
 # plt.savefig("multiblobs_error_growth_cum.svg", bbox_inches='tight')
@@ -1490,9 +1487,9 @@ class MinMax_Normalizer(object):
         # mymin = torch.tensor(0.0)
         # mymax = torch.tensor(0.3)
 
-
         self.a = (high - low)/(mymax - mymin)
         self.b = -self.a*mymax + high
+        print(mymin, mymax)
 
     def encode(self, x):
         s = x.size()
@@ -1563,7 +1560,7 @@ for field in dims:
 
     #At this stage the data needs to be [Batch_Size, X, Y, T]
 
-    np.random.shuffle(u_sol)
+    # np.random.shuffle(u_sol)
     u = torch.from_numpy(u_sol)
     u = u.permute(0, 2, 3, 1)
 
@@ -1580,8 +1577,8 @@ for field in dims:
     norm_strategy = configuration['Normalisation Strategy']
 
     if norm_strategy == 'Min-Max':
-        a_normalizer = MinMax_Normalizer(train_a)
-        y_normalizer = MinMax_Normalizer(train_u)
+        a_normalizer = MinMax_Normalizer(u[:,:,:,:T_in])
+        y_normalizer = MinMax_Normalizer(u[:,:,:,T_in:T+T_in])
 
     if norm_strategy == 'Range':
         a_normalizer = RangeNormalizer(train_a)
@@ -1609,11 +1606,16 @@ for field in dims:
     model = FNO_multi(T_in, step, num_vars, modes, modes, width_vars, width_time)
 
     if field == 'rho':
-        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_fundamental-mesh.pth', map_location=torch.device('cpu')))
+        # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_isothermal-vignette.pth', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_big-tag.pth', map_location=torch.device('cpu')))
     if field == 'Phi':
-        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_some-locker.pth', map_location=torch.device('cpu')))
+        # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_khaki-error.pth', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_stable-snipe.pth', map_location=torch.device('cpu')))
+
     if field == 'T':
-        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_covering-cube.pth', map_location=torch.device('cpu')))
+        # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_tempered-ladder.pth', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_thin-house.pth', map_location=torch.device('cpu')))
+
     model.to(device)
 
     run.update_metadata({'Number of Params': int(model.count_params())})
@@ -1765,7 +1767,9 @@ for field in dims:
     err = [] 
 
     for ii in range(T):
-        err.append((pred_set_scaled[...,ii] - test_u_scaled[...,ii]).pow(2).mean() / test_u_scaled.pow(2).mean())
+        # err.append((pred_set_scaled[...,ii] - test_u_scaled[...,ii]).pow(2).mean() / test_u_scaled.pow(2).mean())
+        err.append(torch.abs(pred_set_encoded[...,ii] - test_u_encoded[...,ii]).mean())
+
     print(test_u_scaled.pow(2).mean())
     err = np.asarray(err)
     errs.append(err)
@@ -1806,13 +1810,13 @@ plt.figure()
 plt.grid()
 plt.plot(np.arange(T_in, T_in + T), err_rho_solo, label='Density - Single', alpha=0.8,  color = 'royalblue', ls='--')
 plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density - Multi', alpha=0.7,  color = 'navy')
-# plt.plot(np.arange(T_in, T_in + T), err_phi_solo, label='Potential - Single', alpha=0.8,  color = 'mediumseagreen', ls='--')
+plt.plot(np.arange(T_in, T_in + T), err_phi_solo, label='Potential - Single', alpha=0.8,  color = 'mediumseagreen', ls='--')
 plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential - Multi', alpha=0.7,  color = 'darkgreen')
 plt.plot(np.arange(T_in, T_in + T), err_T_solo, label='Temp - Single', alpha=0.8,  color = 'lightcoral', ls='--')
 plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp - Multi', alpha=0.7,  color = 'maroon')
 plt.legend()
 plt.xlabel('Time Steps')
-plt.ylabel('NMSE ')
+plt.ylabel('MAE ')
 
 # plt.savefig("multiblobs_error_growth.pdf", bbox_inches='tight')
 # plt.savefig("multiblobs_error_growth.svg", bbox_inches='tight')

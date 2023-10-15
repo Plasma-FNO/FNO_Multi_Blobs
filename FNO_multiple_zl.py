@@ -12,11 +12,11 @@ configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
                  "Field_Mixing": 'Channel',
                  "Type": '2D Time',
-                 "Epochs": 1000,
+                 "Epochs": 250,
                  "Batch Size": 4,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
-                 "Scheduler Step": 200,
+                 "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
@@ -42,7 +42,7 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Skip-connect", "Diff", "Recon", "Finals"], metadata=configuration)
+run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Skip-connect", "Diff", "Recon", "Finals", "Normalisation-test_train", "PhysNorm_change"], metadata=configuration)
 
 # # %%
 import os
@@ -217,6 +217,8 @@ class MinMax_Normalizer(object):
 
         self.a_p = (high - low) / (max_p - min_p)
         self.b_p = -self.a_p * max_p + high
+
+        print(min_u, max_u, min_v, max_v, min_p, max_p)
 
     def encode(self, x):
         s = x.size()
@@ -770,18 +772,12 @@ print(train_u.shape)
 print(test_u.shape)
 
 # %%
-# a_normalizer = RangeNormalizer(train_a)
-a_normalizer = MinMax_Normalizer(train_a)
-# a_normalizer = GaussianNormalizer(train_a)
-# a_normalizer = UnitGaussianNormalizer(train_a)
+a_normalizer = MinMax_Normalizer(uvp[...,:T_in])
 
 train_a = a_normalizer.encode(train_a)
 test_a = a_normalizer.encode(test_a)
 
-# y_normalizer = RangeNormalizer(train_u)
-y_normalizer = MinMax_Normalizer(train_u)
-# y_normalizer = GaussianNormalizer(train_u)
-# y_normalizer = UnitGaussianNormalizer(train_u)
+y_normalizer = MinMax_Normalizer(uvp[...,T_in:T+T_in])
 
 train_u = y_normalizer.encode(train_u)
 test_u_encoded = y_normalizer.encode(test_u)
@@ -938,30 +934,37 @@ print(pred_set.shape, test_u.shape)
 # Logging Metrics
 MSE_error = (pred_set - test_u_encoded).pow(2).mean()
 MAE_error = torch.abs(pred_set - test_u_encoded).mean()
-LP_error = loss / (ntest * T / step)
-rel_error = torch.abs((pred_set - test_u_encoded)/test_u_encoded).mean() * 100 
-nmse = ((pred_set - test_u_encoded).pow(2).mean() / test_u_encoded.pow(2).mean())
-nrmse = torch.sqrt((pred_set - test_u_encoded).pow(2).mean()) / torch.std(test_u_encoded)
+# LP_error = loss / (ntest * T / step)
+# rel_error = torch.abs((pred_set - test_u_encoded)/test_u_encoded).mean() * 100 
+# nmse = ((pred_set - test_u_encoded).pow(2).mean() / test_u_encoded.pow(2).mean())
+# nrmse = torch.sqrt((pred_set - test_u_encoded).pow(2).mean()) / torch.std(test_u_encoded)
 
 print('(MSE) Testing Error: %.3e' % (MSE_error))
 print('(MAE) Testing Error: %.3e' % (MAE_error))
-print('(LP) Testing Error: %.3e' % (LP_error))
-print('(MAPE) Testing Error %.3e' % (rel_error))
-print('(NMSE) Testing Error %.3e' % (nmse))
-print('(NRMSE) Testing Error %.3e' % (nrmse))
+# print('(LP) Testing Error: %.3e' % (LP_error))
+# print('(MAPE) Testing Error %.3e' % (rel_error))
+# print('(NMSE) Testing Error %.3e' % (nmse))
+# print('(NRMSE) Testing Error %.3e' % (nrmse))
 
 # %% 
 run.update_metadata({'Training Time': float(train_time),
                      'MSE': float(MSE_error),
-                     'MAE': float(MAE_error),
-                     'LP Error': float(LP_error),
-                     'MAPE': float(rel_error),
-                     'NMSE': float(nmse),
-                     'NRMSE': float(nrmse)
+                     'MAE': float(MAE_error)
                     })
 
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 
+pred_set_encoded = pred_set
+pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
+
+nmse= 0 
+for ii in range(num_vars):
+    nmse += (pred_set[:,ii] - test_u[:,ii]).pow(2).mean() / test_u[:,ii].pow(2).mean()
+    print(test_u[:,ii].pow(2).mean())
+nmse = nmse/num_vars
+
+print('(NMSE) Testing Error %.3e' % (nmse))
+run.update_metadata({'NMSE': float(nmse)})
 # %%
 # Plotting the comparison plots
 
