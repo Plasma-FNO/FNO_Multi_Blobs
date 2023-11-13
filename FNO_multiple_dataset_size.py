@@ -930,17 +930,15 @@ mpl.rcParams['axes.titlepad'] = 20
 mpl.rcParams['lines.linewidth'] = 3
 
 ntrain = [250, 500, 750, 1000, 1250, 1500, 1750]
-# mse = [0.0004592, 0.0003086, 0.0003048, 0.0002664, 0.0002605,0.0002423, 3.213e-05]
-# mae = [0.006354, 0.00527, 0.00512, 0.004839	, 0.004845, 0.004951, 0.002401]
+
 #Cleaned Dataset
-mse = [0.0004923, 0.0003442, 0.000329, 0.0003163, 0.0003251, 0.0002897, 0.0003121]
-mae = [0.006105, 0.005654, 0.005551, 0.005389, 0.005466, 0.00533, 0.005399]
-train_time = [3089, 5870, 8637, 11470, 14200, 17010, 19850]
+mae = [	0.006211, 0.004648, 0.004261, 0.003719, 0.003633, 0.003447, 0.003645]
+train_time = [7193, 13880, 20600, 27380, 34130, 40920, 47530]
 plt.xlabel('Training Size')
-plt.ylabel('MSE ')
-plt.plot(ntrain, mse, alpha=0.8,  color = 'royalblue', ls='-', linewidth=5, marker='o', ms=10, mec = 'black')
+plt.ylabel('MAE ')
+plt.plot(ntrain, mae, alpha=0.8,  color = 'royalblue', ls='-', linewidth=5, marker='o', ms=10, mec = 'black')
 plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))# plt.xticks(ntrain)
-plt.yticks([0.00020, 0.00025, 0.00030, 0.00035, 0.00040, 0.00045, 0.00050])
+# plt.yticks([0.00020, 0.00025, 0.00030, 0.00035, 0.00040, 0.00045, 0.00050])
 plt.savefig("data_size.pdf", bbox_inches='tight')
 # %%
 mpl.rcParams['figure.figsize']=(16,12)
@@ -948,8 +946,8 @@ mpl.rcParams['figure.figsize']=(16,12)
 fig, ax1 = plt.subplots()
 color = 'firebrick'
 ax1.set_xlabel('Training Size')
-ax1.set_ylabel('MSE', color=color)
-ax1.plot(ntrain, mse, alpha=0.8,  color = 'firebrick', ls='-', linewidth=5, marker='o', ms=10, mec = 'black')
+ax1.set_ylabel('MAE', color=color)
+ax1.plot(ntrain, mae, alpha=0.8,  color = color, ls='-', linewidth=5, marker='o', ms=10, mec = 'black')
 ax1.tick_params(axis='y', labelcolor=color)
 ax1.ticklabel_format(axis="y", style="sci", scilimits=(0,0))# plt.xticks(ntrain)
 
@@ -957,7 +955,7 @@ ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 
 color = 'navy'
 ax2.set_ylabel('Train Time (s)', color=color)  # we already handled the x-label with ax1
-ax2.plot(ntrain, train_time, alpha=0.8,  color = 'navy', ls='-', linewidth=5, marker='o', ms=10, mec = 'black')
+ax2.plot(ntrain, train_time, alpha=0.8,  color = color, ls='-', linewidth=5, marker='o', ms=10, mec = 'black')
 ax2.tick_params(axis='y', labelcolor=color)
 ax2.ticklabel_format(axis="y", style="sci", scilimits=(0,0))# plt.xticks(ntrain)
 

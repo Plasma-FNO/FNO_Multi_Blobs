@@ -575,7 +575,8 @@ class FNO_multi(nn.Module):
 ################################################################
 
 # %%
-data = data_loc + '/Data/MHD_multi_blobs.npz'
+# data = data_loc + '/Data/MHD_multi_blobs.npz'
+data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz' #2000 simulation dataset
 # data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'# new dataset
 
 # %%
@@ -583,9 +584,9 @@ field = configuration['Field']
 dims = ['rho', 'Phi', 'T']
 num_vars = configuration['Variables']
 
-u_sol = np.load(data)['rho'].astype(np.float32)  / 1e19
-v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e3
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e4
+u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
+v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
+p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
 
 u_sol = np.nan_to_num(u_sol)
 v_sol = np.nan_to_num(v_sol)
@@ -603,8 +604,8 @@ p = p.permute(0, 2, 3, 1)
 t_res = configuration['Temporal Resolution']
 x_res = configuration['Spatial Resolution']
 uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
-uvp = np.delete(uvp, (153, 229), axis=0)  # Outlier T values
-# uvp = np.delete(uvp, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0) #Only for the new dataset 
+# uvp = np.delete(uvp, (153, 229), axis=0)  # Outlier T values
+uvp = np.delete(uvp, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0) #Only for the new dataset 
     
 # np.random.shuffle(uvp)
 
@@ -612,11 +613,11 @@ x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
-ntrain =240
-ntest = 36
+# ntrain =240
+# ntest = 36
 
-# ntrain = 1500 #new dataset
-# ntest = 85 #new dataset
+ntrain = 1500 #new dataset
+ntest = 85 #new dataset
 
 S = 106 #Grid Size
 size_x = S
@@ -664,15 +665,18 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 
-# model = FNO_multi(16, 16, width_vars, width_time)
+# = FNO_multi(16, 16, width_vars, width_time)
 model = FNO_multi(T_in, step, num_vars, modes, modes, width_vars, width_time)
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_weary-tactics.pth', map_location=torch.device('cpu'))) #Min-Max Diff
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_polite-comment.pth', map_location=torch.device('cpu'))) #Min-Max Same 
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_dynamic-duck.pth', map_location=torch.device('cpu'))) #Proper Skip - Finals 
-# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_violent-spot.pth', map_location=torch.device('cpu'))) #Normalisation test train 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_violent-spot.pth', map_location=torch.device('cpu'))) #500 Epochs 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_future-pavilion.pth', map_location=torch.device('cpu'))) #Normalisation test train 
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_equidistant-pint.pth', map_location=torch.device('cpu'))) #250 Epochs 
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_wary-deck.pth', map_location=torch.device('cpu'))) #250 Epochs 
-
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_wary-deck.pth', map_location=torch.device('cpu'))) #Different Scaling
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_randomized-levee.pth', map_location=torch.device('cpu'))) #100 Epochs 
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cool-subcompact.pth', map_location=torch.device('cpu'))) #1500 ntrain 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_humane-score.pth', map_location=torch.device('cpu'))) #1750 ntrain 
 
 model.to(device)
 
@@ -775,17 +779,16 @@ err_rho = np.asarray(err_rho)
 err_phi = np.asarray(err_phi)
 err_T = np.asarray(err_T)
 
-
 # %% 
 if configuration["Physics Normalisation"] == 'Yes':
     pred_set[:,0:1,...] = pred_set[:,0:1,...] * 1e20
-    pred_set[:,1:2,...] = pred_set[:,1:2,...] * 1e5
-    pred_set[:,2:3,...] = pred_set[:,2:3,...] * 1e6
+    pred_set[:,1:2,...] = pred_set[:,1:2,...] * 1e5 / 1e2
+    pred_set[:,2:3,...] = pred_set[:,2:3,...] * 1e6 /1e4
 
 
     test_u[:,0:1,...] = test_u[:,0:1,...] * 1e20
-    test_u[:,1:2,...] = test_u[:,1:2,...] * 1e5
-    test_u[:,2:3,...] = test_u[:,2:3,...] * 1e6
+    test_u[:,1:2,...] = test_u[:,1:2,...] * 1e5 / 1e2
+    test_u[:,2:3,...] = test_u[:,2:3,...] * 1e6 / 1e4
 
 # %%
 #Plotting the comparison plots
@@ -875,7 +878,7 @@ for dim in range(num_vars):
 
 # %% 
 #Error Plots
-idx = 8
+idx = 35
 output_plot = []
 for dim in range(num_vars):
     u_field = test_u[idx]
@@ -978,9 +981,26 @@ for dim in range(num_vars):
     cbar = fig.colorbar(pcm, cax=cax)
     cbar.formatter.set_powerlimits((0, 0))
 
-    # plt.savefig("multiblobs_" + dims[dim] + "_" + str(idx) + "_reduced-fort.pdf", format="pdf", bbox_inches='tight', transparent='True')
+    plt.savefig("multiblobs_" + dims[dim] + "_" + str(idx) + "_cool-subcompact_error.pdf", format="pdf", bbox_inches='tight', transparent='True')
 
 
+# %% 
+#Error in the Physical Domain
+
+#Plotting the error growth across time.
+err_rho = [] 
+err_phi = []
+err_T = []
+
+for ii in range(T):
+
+    err_rho.append(torch.abs(pred_set[:,0,:,:,ii] - test_u[:,0,:,:,ii]).mean())
+    err_phi.append(torch.abs(pred_set[:,1,:,:,ii] - test_u[:,1,:,:,ii]).mean())
+    err_T.append(torch.abs(pred_set[:,2,:,:,ii] - test_u[:,2,:,:,ii]).mean())
+
+err_rho = np.asarray(err_rho)
+err_phi = np.asarray(err_phi)
+err_T = np.asarray(err_T)
 
 # %%
 import matplotlib as mpl
@@ -1004,17 +1024,24 @@ plt.rcParams['ytick.minor.width'] =5
 mpl.rcParams['axes.titlepad'] = 20
 
 # %%
-plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'navy', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'darkgreen', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'maroon', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'black', ls='--', linewidth=5)
+# plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'navy')
+plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'darkgreen')
+# plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'maroon')
+# plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'black', ls='--', linewidth=5)
 plt.legend()
 plt.grid()
 plt.xlabel('Time Steps')
-plt.ylabel('MAE ')
+plt.ylabel('MAE')
 
+
+plt.rcParams['text.usetex'] = True
+# plt.ylabel('MAE $(m^{-3})$ ')
+plt.ylabel('MAE $(V)$ ')
+# plt.ylabel('MAE $(eV)$ ')
+
+# plt.savefig('multiblobs_error_growth_T.png')  
 # plt.savefig("multiblobs_error_growth_cum.pdf", bbox_inches='tight')
-# plt.savefig("multiblobs_error_growth_cum.svg", bbox_inches='tight')
+plt.savefig("multiblobs_error_growth_phi.svg", bbox_inches='tight')
 # %%
 # #Dropout Plots
 # #Cyan-Provolone

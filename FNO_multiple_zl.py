@@ -12,14 +12,14 @@ configuration = {"Case": 'Multi-Blobs',
                  "Field": 'rho, Phi, T',
                  "Field_Mixing": 'Channel',
                  "Type": '2D Time',
-                 "Epochs": 250,
-                 "Batch Size": 4,
+                 "Epochs": 500,
+                 "Batch Size": 5,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
                  "Scheduler Step": 100,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'GELU',
-                 "Normalisation Strategy": 'Min-Max',
+                 "Normalisation Strategy": 'Min-Max. Same',
                  "Instance Norm": 'No',
                  "Log Normalisation": 'No',
                  "Physics Normalisation": 'Yes',
@@ -35,6 +35,7 @@ configuration = {"Case": 'Multi-Blobs',
                  "Spatial Resolution": 1,
                  "Temporal Resolution": 1,
                  "Gradient Clipping Norm": None,
+                 "Ntrain": 1750
                  #  "UQ": 'Dropout',
                  #  "Dropout Rate": 0.9
                  }
@@ -42,7 +43,7 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run()
-run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Skip-connect", "Diff", "Recon", "Finals", "Normalisation-test_train", "PhysNorm_change"], metadata=configuration)
+run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Skip-connect", "Diff", "Recon"], metadata=configuration)
 
 # # %%
 import os
@@ -711,7 +712,8 @@ class FNO_multi(nn.Module):
 ################################################################
 
 # %%
-data = data_loc + '/Data/MHD_multi_blobs.npz'
+# data = data_loc + '/Data/MHD_multi_blobs.npz'
+data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz' #2000 simulation dataset
 # data = data_loc + '/Data/FNO_MHD_data_multi_blob_500x500.npz' # For Performing SuperResolution.
 # %%
 field = configuration['Field']
@@ -738,7 +740,9 @@ p = p.permute(0, 2, 3, 1)
 t_res = configuration['Temporal Resolution']
 x_res = configuration['Spatial Resolution']
 uvp = torch.stack((u, v, p), dim=1)[:, ::t_res]
-uvp = np.delete(uvp, (153, 229), axis=0)  # Outlier T values
+# uvp = np.delete(uvp, (153, 229), axis=0)  # Outlier T values
+uvp = np.delete(uvp, (11, 160, 222, 273, 303, 357, 620, 797, 983, 1275, 1391, 1458, 1554, 1600, 1613, 1888, 1937, 1946, 1959), axis=0) #2000 dataset
+
 
 x_grid = np.load(data)['Rgrid'][0, :].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:, 0].astype(np.float32)
@@ -749,8 +753,12 @@ t_grid = np.load(data)['time'].astype(np.float32)
 # x_grid = x_grid[3:-3]
 # y_grid = y_grid[3:-3]
 
-ntrain = 240
-ntest = 36
+# ntrain = 240
+# ntest = 36
+
+ntrain = configuration['Ntrain'] # 2000 dataset
+ntest = 85 #2000 dataset
+
 S = uvp.shape[3]  # Grid Size
 size_x = S
 size_y = S
