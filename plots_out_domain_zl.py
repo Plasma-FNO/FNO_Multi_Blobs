@@ -4,7 +4,7 @@
 Created on 6 Jan 2023
 @author: vgopakum
 FNO modelled over the MHD data built using JOREK for multi-blob diffusion. 
-
+Plotting for data outside of training domain. 
 Multivariable FNO
 """
 # %%
@@ -569,12 +569,8 @@ class FNO_multi(nn.Module):
 
 
 # %%
+# Loading Data for Normalisation 
 
-################################################################
-# Loading Data 
-################################################################
-
-# %%
 # data = data_loc + '/Data/MHD_multi_blobs.npz'
 data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz' #2000 simulation dataset
 # data = data_loc + '/Data/FNO_MHD_data_multi_blob_2000_T50.npz'# new dataset
@@ -653,30 +649,13 @@ train_u = y_normalizer.encode(train_u)
 test_u_encoded = y_normalizer.encode(test_u)
 
 # %%
-train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
-
-t2 = default_timer()
-print('preprocessing finished, time used:', t2-t1)
-
-# %% 
 ################################################################
-# training and evaluation
+# Loading Data outside the domain
 ################################################################
 
-# = FNO_multi(16, 16, width_vars, width_time)
-model = FNO_multi(T_in, step, num_vars, modes, modes, width_vars, width_time)
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cool-subcompact.pth', map_location=torch.device('cpu'))) #1500 ntrain 
+# data = data_loc + '/Data/FNO_MHD_data_multi_blob_out_domain.npz' #way outside the domain
+data = data_loc + '/Data/FNO_MHD_data_multi_blob_just_out_domain.npz' #outside the domain
 
-model.to(device)
-
-run.update_metadata({'Number of Params': int(model.count_params())})
-print("Number of model params : " + str(model.count_params()))
-
-
-# %% 
-#Loading the higher resolution dataset
-data = data_loc + '/Data/FNO_MHD_data_multi_blob_500x500.npz' # For Performing SuperResolution. 
 # %%
 field = configuration['Field']
 dims = ['rho', 'Phi', 'T']
@@ -707,14 +686,59 @@ x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
 y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
 t_grid = np.load(data)['time'].astype(np.float32)
 
-test_a = uvp[:,:,:,:,:T_in]
-test_u = uvp[:,:,:,:,T_in:T+T_in]
+S = 100 #Grid Size
+size_x = S
+size_y = S
 
-# %% 
-#Normalisation taken from that used for the initial set of runs
+t1 = default_timer()
+
+
+train_a = uvp[:ntrain,:,:,:,:T_in]
+train_u = uvp[:ntrain,:,:,:,T_in:T+T_in]
+
+test_a = uvp[-ntest:,:,:,:,:T_in]
+test_u = uvp[-ntest:,:,:,:,T_in:T+T_in]
+
+print(test_u.shape)
 
 test_a = a_normalizer.encode(test_a)
 test_u_encoded = y_normalizer.encode(test_u)
+
+
+# %% 
+
+################################################################
+# training and evaluation
+################################################################
+
+# = FNO_multi(16, 16, width_vars, width_time)
+model = FNO_multi(T_in, step, num_vars, modes, modes, width_vars, width_time)
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_weary-tactics.pth', map_location=torch.device('cpu'))) #Min-Max Diff
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_polite-comment.pth', map_location=torch.device('cpu'))) #Min-Max Same 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_dynamic-duck.pth', map_location=torch.device('cpu'))) #Proper Skip - Finals 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_violent-spot.pth', map_location=torch.device('cpu'))) #500 Epochs 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_future-pavilion.pth', map_location=torch.device('cpu'))) #Normalisation test train 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_equidistant-pint.pth', map_location=torch.device('cpu'))) #250 Epochs 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_wary-deck.pth', map_location=torch.device('cpu'))) #Different Scaling
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_randomized-levee.pth', map_location=torch.device('cpu'))) #100 Epochs 
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cool-subcompact.pth', map_location=torch.device('cpu'))) #1500 ntrain 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_humane-score.pth', map_location=torch.device('cpu'))) #1750 ntrain 
+
+model.to(device)
+
+run.update_metadata({'Number of Params': int(model.count_params())})
+print("Number of model params : " + str(model.count_params()))
+
+
+# %%
+epochs = configuration['Epochs']
+if torch.cuda.is_available():
+    y_normalizer.cuda()
+
+optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
+
+myloss = LpLoss(size_average=False)
 
 # %%
 #Testing 
@@ -724,12 +748,14 @@ pred_set = torch.zeros(test_u.shape)
 index = 0
 with torch.no_grad():
     for xx, yy in tqdm(test_loader):
+        loss = 0
         xx, yy = xx.to(device), yy.to(device)
         # xx = additive_noise(xx)
         t1 = default_timer()
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
+            loss += myloss(out.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             if t == 0:
                 pred = out
@@ -749,6 +775,7 @@ print(pred_set.shape, test_u.shape)
 #Logging Metrics 
 MSE_error = (pred_set - test_u_encoded).pow(2).mean()
 MAE_error = torch.abs(pred_set - test_u_encoded).mean()
+LP_error = loss / (ntest*T/step)
 rel_error = torch.abs((pred_set - test_u_encoded)/test_u_encoded).mean() * 100 
 nmse = ((pred_set - test_u_encoded).pow(2).mean() / test_u_encoded.pow(2).mean())
 nrmse = torch.sqrt((pred_set - test_u_encoded).pow(2).mean()) / torch.std(test_u_encoded)
@@ -798,23 +825,20 @@ err_rho = np.asarray(err_rho)
 err_phi = np.asarray(err_phi)
 err_T = np.asarray(err_T)
 
-
 # %% 
 if configuration["Physics Normalisation"] == 'Yes':
     pred_set[:,0:1,...] = pred_set[:,0:1,...] * 1e20
     pred_set[:,1:2,...] = pred_set[:,1:2,...] * 1e5 / 1e2
-    pred_set[:,2:3,...] = pred_set[:,2:3,...] * 1e6 / 1e4
+    pred_set[:,2:3,...] = pred_set[:,2:3,...] * 1e6 /1e4
 
 
     test_u[:,0:1,...] = test_u[:,0:1,...] * 1e20
     test_u[:,1:2,...] = test_u[:,1:2,...] * 1e5 / 1e2
     test_u[:,2:3,...] = test_u[:,2:3,...] * 1e6 / 1e4
 
-pred_set_500 = pred_set
-test_u_500 = test_u 
 # %%
 #Plotting the comparison plots
-idx = 0
+idx = 0 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib as mpl
 mpl.rcParams['font.size']=16
@@ -892,8 +916,6 @@ for dim in range(num_vars):
     cax = divider.append_axes("right", size="5%", pad=0.1)
     cbar = fig.colorbar(pcm, cax=cax)
     cbar.formatter.set_powerlimits((0, 0))
-    
-    # plt.savefig("fno_cool-subcompact_" + dims[dim] + "_zssr.pdf", format="pdf", bbox_inches='tight', transparent='True')
 
 # %% 
 #Error Plots
@@ -1000,275 +1022,26 @@ for dim in range(num_vars):
     cbar = fig.colorbar(pcm, cax=cax)
     cbar.formatter.set_powerlimits((0, 0))
 
-    plt.savefig("fno_cool-subcompact_error_" + dims[dim] + "_zssr.pdf", format="pdf", bbox_inches='tight', transparent='True')
+    plt.savefig("multiblobs_" + dims[dim] + "_" + str(idx) + "_cool-subcompact_error_out_domain.pdf", format="pdf", bbox_inches='tight', transparent='True')
 
 
 # %% 
-# #Error in the Physical Domain
+#Error in the Physical Domain
 
-# #Plotting the error growth across time.
-# err_rho = [] 
-# err_phi = []
-# err_T = []
-
-# for ii in range(T):
-
-#     err_rho.append(torch.abs(pred_set[:,0,:,:,ii] - test_u[:,0,:,:,ii]).mean())
-#     err_phi.append(torch.abs(pred_set[:,1,:,:,ii] - test_u[:,1,:,:,ii]).mean())
-#     err_T.append(torch.abs(pred_set[:,2,:,:,ii] - test_u[:,2,:,:,ii]).mean())
-
-# err_rho = np.asarray(err_rho)
-# err_phi = np.asarray(err_phi)
-# err_T = np.asarray(err_T)
-
-
-# %%
-#Loading the loweer resolution dataset
-data = data_loc + '/Data/FNO_MHD_data_multi_blob_zssr_100x100.npz' # For Performing SuperResolution. 
-# %%
-field = configuration['Field']
-dims = ['rho', 'Phi', 'T']
-num_vars = configuration['Variables']
-
-u_sol = np.load(data)['rho'].astype(np.float32)  / 1e20
-v_sol = np.load(data)['Phi'].astype(np.float32)  / 1e5
-p_sol = np.load(data)['T'].astype(np.float32)    / 1e6
-
-u_sol = np.nan_to_num(u_sol)
-v_sol = np.nan_to_num(v_sol)
-p_sol = np.nan_to_num(p_sol)
-
-u = torch.from_numpy(u_sol)
-u = torch.unsqueeze(u, 0)
-u = u.permute(0, 2, 3, 1)
-
-v = torch.from_numpy(v_sol)
-v = torch.unsqueeze(v, 0)
-v = v.permute(0, 2, 3, 1)
-
-p = torch.from_numpy(p_sol)
-p = torch.unsqueeze(p, 0)
-p = p.permute(0, 2, 3, 1)
-
-t_res = configuration['Temporal Resolution']
-x_res = configuration['Spatial Resolution']
-uvp = torch.stack((u,v,p), dim=1)[:,::t_res]
-
-x_grid = np.load(data)['Rgrid'][0,:].astype(np.float32)
-y_grid = np.load(data)['Zgrid'][:,0].astype(np.float32)
-t_grid = np.load(data)['time'].astype(np.float32)
-
-test_a = uvp[:,:,:,:,:T_in]
-test_u = uvp[:,:,:,:,T_in:T+T_in]
-
-# %% 
-#Normalisation taken from that used for the initial set of runs
-
-test_a = a_normalizer.encode(test_a)
-test_u_encoded = y_normalizer.encode(test_u)
-
-# %%
-#Testing 
-batch_size = 1
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1, shuffle=False)
-pred_set = torch.zeros(test_u.shape)
-index = 0
-with torch.no_grad():
-    for xx, yy in tqdm(test_loader):
-        xx, yy = xx.to(device), yy.to(device)
-        # xx = additive_noise(xx)
-        t1 = default_timer()
-        for t in range(0, T, step):
-            y = yy[..., t:t + step]
-            out = model(xx)
-
-            if t == 0:
-                pred = out
-            else:
-                pred = torch.cat((pred, out), -1)       
-
-            xx = torch.cat((xx[..., step:], out), dim=-1)
-
-        t2 = default_timer()
-        # pred = y_normalizer.decode(pred)
-        pred_set[index]=pred
-        index += 1
-        # print(t2-t1)
-
-# %% 
-print(pred_set.shape, test_u.shape)
-#Logging Metrics 
-MSE_error = (pred_set - test_u_encoded).pow(2).mean()
-MAE_error = torch.abs(pred_set - test_u_encoded).mean()
-rel_error = torch.abs((pred_set - test_u_encoded)/test_u_encoded).mean() * 100 
-nmse = ((pred_set - test_u_encoded).pow(2).mean() / test_u_encoded.pow(2).mean())
-nrmse = torch.sqrt((pred_set - test_u_encoded).pow(2).mean()) / torch.std(test_u_encoded)
-
-print('(MSE) Testing Error: %.3e' % (MSE_error))
-print('(MAE) Testing Error: %.3e' % (MAE_error))
-# print('(LP) Testing Error: %.3e' % (LP_error))
-# print('(MAPE) Testing Error %.3e' % (rel_error))
-# print('(NMSE) Testing Error %.3e' % (nmse))
-# print('(NRMSE) Testing Error %.3e' % (nrmse))
-
-# run.update_metadata({'MSE Test Error': float(MSE_error),
-#                      'MAE Test Error': float(MAE_error),
-#                      'LP Test Error': float(LP_error)
-#                     })
-
-
-pred_set_encoded = pred_set
-pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
-
-nmse= 0 
-for ii in range(num_vars):
-    nmse += (pred_set[:,ii] - test_u[:,ii]).pow(2).mean() / test_u[:,ii].pow(2).mean()
-    print(test_u[:,ii].pow(2).mean())
-nmse = nmse/num_vars
-print('(NMSE) Testing Error %.3e' % (nmse))
-
-pred_set_scaled = pred_set
-test_u_scaled = test_u
-
-# %%
 #Plotting the error growth across time.
-err_rho_lower = [] 
-err_phi_lower = []
-err_T_lower = []
+err_rho = [] 
+err_phi = []
+err_T = []
 
 for ii in range(T):
-    # err_rho.append((pred_set_scaled[:,0,:,:,ii] - test_u_scaled[:,0,:,:,ii]).pow(2).mean() / torch.std(test_u_scaled[:,0].pow(2).mean()))
-    # err_phi.append((pred_set_scaled[:,1,:,:,ii] - test_u_scaled[:,1,:,:,ii]).pow(2).mean() / torch.std(test_u_scaled[:,1].pow(2).mean()))
-    # err_T.append((pred_set_scaled[:,2,:,:,ii] - test_u_scaled[:,2,:,:,ii]).pow(2).mean() / torch.std(test_u_scaled[:,2].pow(2).mean()))
-    
-    err_rho_lower.append(torch.abs(pred_set_encoded[:,0,:,:,ii] - test_u_encoded[:,0,:,:,ii]).mean())
-    err_phi_lower.append(torch.abs(pred_set_encoded[:,1,:,:,ii] - test_u_encoded[:,1,:,:,ii]).mean())
-    err_T_lower.append(torch.abs(pred_set_encoded[:,2,:,:,ii] - test_u_encoded[:,2,:,:,ii]).mean())
 
-err_rho_lower = np.asarray(err_rho)
-err_phi_lower = np.asarray(err_phi)
-err_T_lower = np.asarray(err_T)
+    err_rho.append(torch.abs(pred_set[:,0,:,:,ii] - test_u[:,0,:,:,ii]).mean())
+    err_phi.append(torch.abs(pred_set[:,1,:,:,ii] - test_u[:,1,:,:,ii]).mean())
+    err_T.append(torch.abs(pred_set[:,2,:,:,ii] - test_u[:,2,:,:,ii]).mean())
 
-
-# %% 
-if configuration["Physics Normalisation"] == 'Yes':
-    pred_set[:,0:1,...] = pred_set[:,0:1,...] * 1e20
-    pred_set[:,1:2,...] = pred_set[:,1:2,...] * 1e5
-    pred_set[:,2:3,...] = pred_set[:,2:3,...] * 1e6
-
-
-    test_u[:,0:1,...] = test_u[:,0:1,...] * 1e20
-    test_u[:,1:2,...] = test_u[:,1:2,...] * 1e5
-    test_u[:,2:3,...] = test_u[:,2:3,...] * 1e6
-
-
-# %% 
-
-#Comparing across normal and super resolution 
-idx = 0
-output_plot = []
-for dim in range(num_vars):
-    u_field = test_u_500[idx]
-
-    v_min_1 = torch.min(u_field[dim,:,:,0])
-    v_max_1 = torch.max(u_field[dim,:,:,0])
-
-    v_min_2 = torch.min(u_field[dim, :, :, int(T/2)])
-    v_max_2 = torch.max(u_field[dim, :, :, int(T/2)])
-
-    v_min_3 = torch.min(u_field[dim, :, :, -1])
-    v_max_3 = torch.max(u_field[dim, :, :, -1])
-
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(3,3,1)
-    pcm =ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-    # ax.title.set_text('Initial')
-    ax.title.set_text('t='+ str(T_in))
-    ax.set_ylabel('Solution - 500x500', weight='bold')
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    cbar = fig.colorbar(pcm, cax=cax)
-    cbar.formatter.set_powerlimits((0, 0))
-    
-    ax = fig.add_subplot(3,3,2)
-    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-    # ax.title.set_text('Middle')
-    ax.title.set_text('t='+ str(int((T+T_in)/2)))
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    cbar = fig.colorbar(pcm, cax=cax)
-    cbar.formatter.set_powerlimits((0, 0))
-
-    ax = fig.add_subplot(3,3,3)
-    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-    # ax.title.set_text('Final')
-    ax.title.set_text('t='+str(T+T_in))
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    cbar = fig.colorbar(pcm, cax=cax)
-    cbar.formatter.set_powerlimits((0, 0))
-
-    u_field = pred_set[idx]
-
-    ax = fig.add_subplot(3,3,4)
-    pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_1, vmax=v_max_1)
-    ax.set_ylabel('FNO - 100x100', weight='bold')
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    cbar = fig.colorbar(pcm, cax=cax)
-    cbar.formatter.set_powerlimits((0, 0))
-
-    ax = fig.add_subplot(3,3,5)
-    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_2, vmax=v_max_2)
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    cbar = fig.colorbar(pcm, cax=cax)
-    cbar.formatter.set_powerlimits((0, 0))
-
-    ax = fig.add_subplot(3,3,6)
-    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5], vmin=v_min_3, vmax=v_max_3)
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    cbar = fig.colorbar(pcm, cax=cax)
-    cbar.formatter.set_powerlimits((0, 0))
-
-    u_field = pred_set_500[idx]
-
-    ax = fig.add_subplot(3,3,7)
-    pcm = ax.imshow(u_field[dim,:,:,0], cmap=cm.coolwarm, extent=[9.5, 10.5, -0.5, 0.5])
-    ax.set_ylabel('FNO - 500x500', weight='bold')
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    cbar = fig.colorbar(pcm, cax=cax)
-    cbar.formatter.set_powerlimits((0, 0))
-
-    ax = fig.add_subplot(3,3,8)
-    pcm = ax.imshow(u_field[dim,:,:,int(T/2)], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5])
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    cbar = fig.colorbar(pcm, cax=cax)
-    cbar.formatter.set_powerlimits((0, 0))
-
-    ax = fig.add_subplot(3,3,9)
-    pcm = ax.imshow(u_field[dim,:,:,-1], cmap=cm.coolwarm,  extent=[9.5, 10.5, -0.5, 0.5])
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    cbar = fig.colorbar(pcm, cax=cax)
-    cbar.formatter.set_powerlimits((0, 0))
-
-    # plt.savefig("fno_cool-subcompact_error_" + dims[dim] + "_zssr.pdf", format="pdf", bbox_inches='tight', transparent='True')
+err_rho = np.asarray(err_rho)
+err_phi = np.asarray(err_phi)
+err_T = np.asarray(err_T)
 
 # %%
 import matplotlib as mpl
@@ -1292,10 +1065,10 @@ plt.rcParams['ytick.minor.width'] =5
 mpl.rcParams['axes.titlepad'] = 20
 
 # %%
-plt.plot(np.arange(T_in, T_in + T), err_rho_lower, label='Density', alpha=0.8,  color = 'navy', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_phi_lower, label='Potential', alpha=0.8,  color = 'darkgreen', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), err_T_lower, label='Temp', alpha=0.8,  color = 'maroon', linewidth=5)
-plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'black', ls='--', linewidth=5)
+# plt.plot(np.arange(T_in, T_in + T), err_rho, label='Density', alpha=0.8,  color = 'navy')
+plt.plot(np.arange(T_in, T_in + T), err_phi, label='Potential', alpha=0.8,  color = 'darkgreen')
+# plt.plot(np.arange(T_in, T_in + T), err_T, label='Temp', alpha=0.8,  color = 'maroon')
+# plt.plot(np.arange(T_in, T_in + T), (err_rho+err_phi+err_T), label='Cumulative', alpha=0.8,  color = 'black', ls='--', linewidth=5)
 plt.legend()
 plt.grid()
 plt.xlabel('Time Steps')
@@ -1304,11 +1077,9 @@ plt.ylabel('MAE')
 
 plt.rcParams['text.usetex'] = True
 # plt.ylabel('MAE $(m^{-3})$ ')
-# plt.ylabel('MAE $(V)$ ')
-# plt.ylabel('MAE $(K)$ ')
+plt.ylabel('MAE $(V)$ ')
+# plt.ylabel('MAE $(eV)$ ')
 
-# plt.savefig('multiblobs_error_growth_T.png')
+# plt.savefig('multiblobs_error_growth_T.png')  
 # plt.savefig("multiblobs_error_growth_cum.pdf", bbox_inches='tight')
-# plt.savefig("multiblobs_error_growth_cum.svg", bbox_inches='tight')
-
-# %%
+# plt.savefig("multiblobs_error_growth_phi.svg", bbox_inches='tight')

@@ -926,6 +926,10 @@ torch.save(model.state_dict(),  model_loc)
 
 # %%
 # Testing
+model = FNO_multi(modes, modes, width_vars, width_time)
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_grouchy-creek.pth', map_location='cpu'))
+model.to(device)
+ # %% 
 batch_size = 1
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=1,
                                           shuffle=False)
