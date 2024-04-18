@@ -42,7 +42,7 @@ configuration = {"Case": 'Multi-Blobs',
 
 # %%
 from simvue import Run
-run = Run()
+run = Run(mode='online')
 run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Skip-connect", "Diff", "Recon"], metadata=configuration)
 
 # # %%

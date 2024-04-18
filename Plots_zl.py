@@ -675,8 +675,9 @@ model = FNO_multi(T_in, step, num_vars, modes, modes, width_vars, width_time)
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_equidistant-pint.pth', map_location=torch.device('cpu'))) #250 Epochs 
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_wary-deck.pth', map_location=torch.device('cpu'))) #Different Scaling
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_randomized-levee.pth', map_location=torch.device('cpu'))) #100 Epochs 
-model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cool-subcompact.pth', map_location=torch.device('cpu'))) #1500 ntrain 
+# model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_cool-subcompact.pth', map_location=torch.device('cpu'))) #1500 ntrain 
 # model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_humane-score.pth', map_location=torch.device('cpu'))) #1750 ntrain 
+model.load_state_dict(torch.load(file_loc + '/Models/FNO_multi_blobs_diachronic-restaurant.pth', map_location=torch.device('cpu'))) #500 ntrain
 
 model.to(device)
 
