@@ -4,7 +4,7 @@
 Created on 6 Jan 2023
 @author: vgopakum
 
-Multivariable FNO modelling gyrokinetic data. 2 variables along the x-y axis with autoregressive time roll-outs. 
+Multivariable FNO
 """
 # %%
 configuration = {"Case": 'Multi-Blobs',
@@ -42,7 +42,7 @@ configuration = {"Case": 'Multi-Blobs',
 # %%
 from simvue import Run
 run = Run(mode='online')
-run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Skip-connect", "Diff", "Recon"], metadata=configuration)
+run.init(folder="/FNO_MHD/pre_IAEA", tags=['Multi-Blobs', 'MultiVariable', "Z_Li", "Skip-connect", "Diff", "Recon", "clean"], metadata=configuration)
 
 # %%
 import os
@@ -189,8 +189,7 @@ model.to(device)
 run.update_metadata({'Number of Params': int(model.count_params())})
 print("Number of model params : " + str(model.count_params()))
 
-# optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
-optimizer = torch.optim.Adam(model.parameters())
+optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'],
                                             gamma=configuration['Scheduler Gamma'])
 
@@ -211,25 +210,26 @@ start_time = time.time()
 for ep in tqdm(range(epochs)):
     model.train()
     t1 = default_timer()
-    train_l2 = 0
+    train_l2_step = 0
+    train_l2_full = 0
     for xx, yy in train_loader:
         optimizer.zero_grad()
         loss = 0
         xx = xx.to(device)
         yy = yy.to(device)
         y_old = xx[..., -step:]
+        # xx = additive_noise(xx)
 
         for t in range(0, T_out, step):
             y = yy[..., t:t + step]
             im = model(xx)
-
             #Recon Loss
-            loss += loss_func(im.reshape(xx.shape[0], -1), y.reshape(xx.shape[0], -1))
+            loss += loss_func(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             #Residual Loss
             pred_diff = im - xx[..., -step:]
             y_diff = y - y_old
-            loss += loss_func(pred_diff.reshape(xx.shape[0]*num_vars, x_res, x_res, step), y_diff.reshape(xx.shape[0]*num_vars, x_res, x_res, step))
+            loss += loss_func(pred_diff.reshape(batch_size*num_vars, S, S, step), y_diff.reshape(batch_size*num_vars, S, S, step))
 
             if t == 0:
                 pred = im
@@ -239,18 +239,18 @@ for ep in tqdm(range(epochs)):
             xx = torch.cat((xx[..., step:], im), dim=-1)
             y_old = y
 
-        train_l2 += loss.item()
+        train_l2_step += loss.item()
+        l2_full = loss_func(pred.reshape(batch_size*num_vars, S, S, T_out), yy.reshape(batch_size*num_vars, S, S, T_out))
+        train_l2_full += l2_full.item()
 
         loss.backward()
-        
-        #Gradient Clipping 
         # torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=max_grad_clip_norm, norm_type=2.0)
-        
-        optimizer.step()
-        scheduler.step()
 
-    train_loss = train_l2 / ntrain 
-    train_loss_step = train_loss / ntrain / (T_out / step)
+        # l2_full.backward()
+        optimizer.step()
+
+    train_loss = train_l2_full / ntrain /num_vars
+    train_l2_step = train_l2_step / ntrain / (T_out / step) /num_vars
 
     # Validation Loop
     test_loss = 0
@@ -266,19 +266,17 @@ for ep in tqdm(range(epochs)):
                     pred = out
                 else:
                     pred = torch.cat((pred, out), -1)
-
+ 
                 xx = torch.cat((xx[..., step:], out), dim=-1)
-            test_loss += loss_func(pred, yy).item()
-            
-        test_loss = test_loss / ntest 
+            test_loss += loss_func(pred.reshape(batch_size*num_vars, S, S, T_out), yy.reshape(batch_size*num_vars, S, S, T_out)).item()
+        test_loss = test_loss / ntest /num_vars
 
     t2 = default_timer()
 
     print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss: %.3e' % (
-    ep, t2 - t1, train_loss_step, train_loss, test_loss))
+    ep, t2 - t1, train_l2_step, train_loss, test_loss)) 
 
     run.log_metrics({'Train Loss': train_loss,
-                     'Train Loss per Step': train_loss_step,
                     'Test Loss': test_loss})
 
 train_time = time.time() - start_time
@@ -335,19 +333,9 @@ run.update_metadata({'Training Time': float(train_time),
                      'MAE': float(MAE_error)
                     })
 
-pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
-
 pred_set_encoded = pred_set
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 
-#Normalised MSE
-nmse= 0 
-for ii in range(num_vars):
-    nmse += (pred_set[:,ii] - test_u[:,ii]).pow(2).mean() / test_u[:,ii].pow(2).mean()
-    # print(test_u[:,ii].pow(2).mean())
-
-print('(NMSE) Testing Error %.3e' % (nmse))
-run.update_metadata({'NMSE': float(nmse)})
 # %%
 # Plotting the comparison plots
 
