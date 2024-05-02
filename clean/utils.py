@@ -8,7 +8,7 @@ Utilities required to run multivariate FNO
 import numpy as np 
 import torch 
 import torch.nn as nn 
-import torch.functional as F 
+import torch.nn.functional as F
 
 import operator
 from functools import reduce
@@ -306,7 +306,7 @@ class MinMax_Normalizer(object):
         self.b = self.b.cpu()
 
 # %% 
-        ##################################
+##################################
 # Loss Functions
 ##################################
 
