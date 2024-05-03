@@ -123,154 +123,84 @@ class RangeNormalizer(object):
 class MinMax_Normalizer_variable(object):
     def __init__(self, x, low=0.0, high=1.0):
         super(MinMax_Normalizer_variable, self).__init__()
-        min_u = torch.min(x[:, 0, :, :, :])
-        max_u = torch.max(x[:, 0, :, :, :])
-
-        self.a_u = (high - low) / (max_u - min_u)
-        self.b_u = -self.a_u * max_u + high
-
-        min_v = torch.min(x[:, 1, :, :, :])
-        max_v = torch.max(x[:, 1, :, :, :])
-
-        self.a_v = (high - low) / (max_v - min_v)
-        self.b_v = -self.a_v * max_v + high
-
-        min_p = torch.min(x[:, 2, :, :, :])
-        max_p = torch.max(x[:, 2, :, :, :])
-
-        self.a_p = (high - low) / (max_p - min_p)
-        self.b_p = -self.a_p * max_p + high
-
-        print(min_u, max_u, min_v, max_v, min_p, max_p)
+        
+        self.num_vars = x.shape[1]
+        aa = []
+        bb = []
+        
+        for ii in range(self.num_vars):
+            min_u = torch.min(x[:, ii, :, :, :])
+            max_u = torch.max(x[:, ii, :, :, :])
+            
+            aa.append((high - low) / (max_u - min_u))
+            bb.append( -aa[ii] * max_u + high)
+        
+        self.a = torch.tensor(aa)
+        self.b = torch.tensor(bb)
 
     def encode(self, x):
-        s = x.size()
-
-        u = x[:, 0, :, :, :]
-        u = self.a_u * u + self.b_u
-
-        v = x[:, 1, :, :, :]
-        v = self.a_v * v + self.b_v
-
-        p = x[:, 2, :, :, :]
-        p = self.a_p * p + self.b_p
-
-        x = torch.stack((u, v, p), dim=1)
-
+        for ii in range(self.num_vars):
+            x[:, ii] = self.a[ii] * x[:, ii] + self.b[ii] 
         return x
 
     def decode(self, x):
-        s = x.size()
-
-        u = x[:, 0, :, :, :]
-        u = (u - self.b_u) / self.a_u
-
-        v = x[:, 1, :, :, :]
-        v = (v - self.b_v) / self.a_v
-
-        p = x[:, 2, :, :, :]
-        p = (p - self.b_p) / self.a_p
-
-        x = torch.stack((u, v, p), dim=1)
-
+        for ii in range(self.num_vars):
+            x[:, ii] =  (x[:, ii] - self.b[ii])  /  self.a[ii] 
         return x
-
+    
     def cuda(self):
-        self.a_u = self.a_u.cuda()
-        self.b_u = self.b_u.cuda()
+        self.a = self.a.cuda()
+        self.b = self.b.cuda()
 
-        self.a_v = self.a_v.cuda()
-        self.b_v = self.b_v.cuda()
-
-        self.a_p = self.a_p.cuda()
-        self.b_p = self.b_p.cuda()
 
     def cpu(self):
-        self.a_u = self.a_u.cpu()
-        self.b_u = self.b_u.cpu()
+        self.a = self.a.cpu()
+        self.b = self.b.cpu()
 
-        self.a_v = self.a_v.cpu()
-        self.b_v = self.b_v.cpu()
-
-        self.a_p = self.a_p.cpu()
-        self.b_p = self.b_p.cpu()
 
 class LogNormalizer(object):
     def __init__(self, x,  low=0.0, high=1.0, eps=0.01):
         super(LogNormalizer, self).__init__()
 
-        # x could be in shape of ntrain*n or ntrain*T*n or ntrain*n*T
-        min_u = torch.min(x[:, 0, :, :, :])
-        max_u = torch.max(x[:, 0, :, :, :])
-
-        self.a_u = (high - low) / (max_u - min_u)
-        self.b_u = -self.a_u * max_u + high
-
-        min_v = torch.min(x[:, 1, :, :, :])
-        max_v = torch.max(x[:, 1, :, :, :])
-
-        self.a_v = (high - low) / (max_v - min_v)
-        self.b_v = -self.a_v * max_v + high
-
-        min_p = torch.min(x[:, 2, :, :, :])
-        max_p = torch.max(x[:, 2, :, :, :])
-
-        self.a_p = (high - low) / (max_p - min_p)
-        self.b_p = -self.a_p * max_p + high
-
+        self.num_vars = x.shape[1]
+        aa = []
+        bb = []
+        
+        for ii in range(self.num_vars):
+            min_u = torch.min(x[:, ii, :, :, :])
+            max_u = torch.max(x[:, ii, :, :, :])
+            
+            aa.append((high - low) / (max_u - min_u))
+            bb.append( -aa[ii] * max_u + high)
+        
+        self.a = torch.tensor(aa)
+        self.b = torch.tensor(bb)
+        
         self.eps = eps
 
     def encode(self, x):
-        u = x[:, 0, :, :, :]
-        u = self.a_u * u + self.b_u
-
-        v = x[:, 1, :, :, :]
-        v = self.a_v * v + self.b_v
-
-        p = x[:, 2, :, :, :]
-        p = self.a_p * p + self.b_p
-
-        x = torch.stack((u, v, p), dim=1)
+        for ii in range(self.num_vars):
+            x[:, ii] = self.a[ii] * x[:, ii] + self.b[ii] 
 
         x = torch.log(x + 1 + self.eps)
 
         return x
 
     def decode(self, x):
+        for ii in range(self.num_vars):
+            x[:, ii] =  (x[:, ii] - self.b[ii])  /  self.a[ii] 
         x = torch.exp(x) - 1 - self.eps
-
-        u = x[:, 0, :, :, :]
-        u = (u - self.b_u) / self.a_u
-
-        v = x[:, 1, :, :, :]
-        v = (v - self.b_v) / self.a_v
-
-        p = x[:, 2, :, :, :]
-        p = (p - self.b_p) / self.a_p
-
-        x = torch.stack((u, v, p), dim=1)
-
         return x
 
     def cuda(self):
-        self.a_u = self.a_u.cuda()
-        self.b_u = self.b_u.cuda()
+        self.a = self.a.cuda()
+        self.b = self.b.cuda()
 
-        self.a_v = self.a_v.cuda()
-        self.b_v = self.b_v.cuda()
-
-        self.a_p = self.a_p.cuda()
-        self.b_p = self.b_p.cuda()
 
     def cpu(self):
-        self.a_u = self.a_u.cpu()
-        self.b_u = self.b_u.cpu()
+        self.a = self.a.cpu()
+        self.b = self.b.cpu()
 
-        self.a_v = self.a_v.cpu()
-        self.b_v = self.b_v.cpu()
-
-        self.a_p = self.a_p.cpu()
-        self.b_p = self.b_p.cpu()
 
 
 #normalization, rangewise but across the full domain 
